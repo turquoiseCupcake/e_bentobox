@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../user/user_home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -133,7 +134,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       if (isUser) {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (context) => const MockUserHomeScreen()),
+                          MaterialPageRoute(builder: (context) => const UserHomeScreen()),
                         );
                       } else {
                         Navigator.pushReplacement(
@@ -157,18 +158,6 @@ class _LoginScreenState extends State<LoginScreen> {
 // ==========================================
 // MOCK PLACEHOLDER SCREENS (To be moved later)
 // ==========================================
-
-class MockUserHomeScreen extends StatelessWidget {
-  const MockUserHomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('User Home'), backgroundColor: Colors.orange),
-      body: const Center(child: Text('Welcome, User! Carenderia List goes here.')),
-    );
-  }
-}
 
 class MockVendorDashboardScreen extends StatelessWidget {
   const MockVendorDashboardScreen({super.key});
