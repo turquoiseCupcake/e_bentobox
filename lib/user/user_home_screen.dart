@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'carenderia_view_screen.dart';
 
 class UserHomeScreen extends StatelessWidget {
   const UserHomeScreen({super.key});
@@ -54,9 +55,12 @@ class UserHomeScreen extends StatelessWidget {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(12),
                       onTap: () {
-                        // TODO: Navigate to Carenderia Menu View
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Viewing menu for ${vendor['name']}')),
+                        // Navigate to Carenderia Menu View
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CarenderiaViewScreen(vendor: vendor),
+                          ),
                         );
                       },
                       child: Padding(
