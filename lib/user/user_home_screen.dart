@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'carenderia_view_screen.dart';
+import 'order_tracking_screen.dart'; // Import the tracking screen
 
 class UserHomeScreen extends StatelessWidget {
   const UserHomeScreen({super.key});
@@ -22,15 +23,17 @@ class UserHomeScreen extends StatelessWidget {
         backgroundColor: Colors.orange,
         elevation: 0,
         actions: [
+          // Order Tracking Button
           IconButton(
-            icon: const Icon(Icons.shopping_cart_outlined),
+            icon: const Icon(Icons.receipt_long),
+            tooltip: 'My Reservations',
             onPressed: () {
-              // TODO: Navigate to bento cart screen
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Opening Bento Cart...')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const OrderTrackingScreen()),
               );
             },
-          )
+          ),
         ],
       ),
       body: Padding(
