@@ -36,18 +36,30 @@ class MyApp extends StatelessWidget {
 // STATE MANAGEMENT: Provider Class
 // ==========================================
 class BentoCartProvider extends ChangeNotifier {
-  final List<String> _cartItems = [];
+  // Upgraded to store a map with name AND price
+  final List<Map<String, dynamic>> _cartItems = [];
+  DateTime? _reservationDate; // To store the selected next-day date
 
-  List<String> get cartItems => _cartItems;
+  List<Map<String, dynamic>> get cartItems => _cartItems;
   int get itemCount => _cartItems.length;
+  DateTime? get reservationDate => _reservationDate;
 
-  void addItem(String itemName) {
-    _cartItems.add(itemName);
+  // Automatically calculates the total price of the bento box
+  double get totalPrice => _cartItems.fold(0, (sum, item) => sum + item['price']);
+
+  void addItem(Map<String, dynamic> item) {
+    _cartItems.add(item);
     notifyListeners(); // Tells the UI to update
+  }
+
+  void setReservationDate(DateTime date) {
+    _reservationDate = date;
+    notifyListeners();
   }
 
   void clearCart() {
     _cartItems.clear();
+    _reservationDate = null;
     notifyListeners();
   }
 }
@@ -86,7 +98,8 @@ class DummyMenuScreen extends StatelessWidget {
             // Button to test Provider State Management
             ElevatedButton(
               onPressed: () {
-                context.read<BentoCartProvider>().addItem('Pork Sisig');
+                // Pass a map instead of just a string
+                context.read<BentoCartProvider>().addItem({'name': 'Pork Sisig', 'price': 70.0});
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Added Pork Sisig to Bento!')),
                 );

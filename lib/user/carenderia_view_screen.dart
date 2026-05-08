@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../main.dart'; // Importing to access BentoCartProvider
+import 'cart_screen.dart'; // Import the new Cart Screen
 
 class CarenderiaViewScreen extends StatelessWidget {
   final Map<String, dynamic> vendor;
@@ -79,12 +80,15 @@ class CarenderiaViewScreen extends StatelessWidget {
                       ),
                       onPressed: () {
                         // Add to global Cart Provider
-                        context.read<BentoCartProvider>().addItem(item['name']);
-                        
+                        context.read<BentoCartProvider>().addItem(item);
+
+                        // Clear any existing SnackBars immediately before showing a new one
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+                        // Show SnackBar that disappears after 5 seconds
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('Added ${item['name']} to Bento Box!'),
-                            duration: const Duration(seconds: 1),
                             action: SnackBarAction(
                               label: 'UNDO',
                               onPressed: () {
@@ -107,9 +111,10 @@ class CarenderiaViewScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: Colors.deepOrange,
         onPressed: () {
-          // TODO: Navigate to Cart/Checkout
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Going to Checkout...')),
+          // Navigate to the Cart Screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const CartScreen()),
           );
         },
         icon: const Icon(Icons.shopping_cart, color: Colors.white),
