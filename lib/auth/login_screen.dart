@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:convert'; // To decode JSON
+import 'package:http/http.dart' as http; // To make network requests
 import '../user/user_home_screen.dart';
+import '../vendor/vendor_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,6 +14,82 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   // Toggle state: true = User, false = Vendor
   bool isUser = true;
+  bool isLoading = false; // To show a loading spinner
+
+  // Controllers to read text from the fields
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  // The actual backend login logic
+  Future<void> _handleLogin() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final role = isUser ? 'User' : 'Vendor';
+      
+      // REPLACE 'YOUR_VPS_IP' WITH YOUR ACTUAL LIGHTSAIL IP ADDRESS
+      final url = Uri.parse('http://13.250.200.60:3000/api/login'); 
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': _emailController.text.trim(),
+          'password': _passwordController.text,
+          'role': role,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200 && data['success']) {
+        // Success! Route to the correct screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Login Successful!'), backgroundColor: Colors.green),
+        );
+
+        if (isUser) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const UserHomeScreen()),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const VendorDashboardScreen()),
+          );
+        }
+      } else {
+        // Failed: Show backend error message (e.g., "Account banned" or "Invalid password")
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data['message'] ?? 'Login failed'), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Network Error. Is the server running?'), backgroundColor: Colors.red),
+      );
+      print("Login Error: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +169,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 // Email Field
                 TextField(
+                  controller: _emailController,
                   decoration: InputDecoration(
                     labelText: 'Email',
                     prefixIcon: const Icon(Icons.email_outlined),
@@ -104,6 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 // Password Field
                 TextField(
+                  controller: _passwordController,
                   obscureText: true,
                   decoration: InputDecoration(
                     labelText: 'Password',
@@ -117,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Mock Login Button
+                // Real Login Button
                 SizedBox(
                   width: double.infinity,
                   height: 50,
@@ -129,21 +210,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () {
-                      // MOCK ROUTING: Navigate based on the selected role
-                      if (isUser) {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (context) => const UserHomeScreen()),
-                        );
-                      } else {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (context) => const MockVendorDashboardScreen()),
-                        );
-                      }
-                    },
-                    child: const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    onPressed: isLoading ? null : _handleLogin,
+                    child: isLoading 
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
@@ -155,18 +225,5 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ==========================================
-// MOCK PLACEHOLDER SCREENS (To be moved later)
-// ==========================================
-
-class MockVendorDashboardScreen extends StatelessWidget {
-  const MockVendorDashboardScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Vendor Dashboard'), backgroundColor: Colors.deepOrange),
-      body: const Center(child: Text('Welcome, Vendor! Manage tomorrow\'s orders here.')),
-    );
-  }
-}
+// NOTE: You can now delete the entire MockVendorDashboardScreen class
+// that was previously at the bottom of this file!
