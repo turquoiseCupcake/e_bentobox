@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http; // To make network requests
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
 import '../user/user_home_screen.dart';
 import '../vendor/vendor_dashboard_screen.dart';
+import '../vendor/vendor_main_screen.dart';
 import 'register_screen.dart'; // Import the new register screen
 
 class LoginScreen extends StatefulWidget {
@@ -63,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const VendorDashboardScreen()),
+            MaterialPageRoute(builder: (context) => const VendorMainScreen()),
           );
         }
       } else {
