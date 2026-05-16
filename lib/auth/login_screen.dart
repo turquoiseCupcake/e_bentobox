@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:convert'; // To decode JSON
 import 'package:http/http.dart' as http; // To make network requests
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
 import '../user/user_home_screen.dart';
 import '../vendor/vendor_dashboard_screen.dart';
+import 'register_screen.dart'; // Import the new register screen
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -29,8 +31,9 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final role = isUser ? 'User' : 'Vendor';
       
-      // REPLACE 'YOUR_VPS_IP' WITH YOUR ACTUAL LIGHTSAIL IP ADDRESS
-      final url = Uri.parse('http://13.250.200.60:3000/api/login'); 
+      // Read the base URL securely from the .env file
+      final baseUrl = dotenv.env['API_BASE_URL'];
+      final url = Uri.parse('$baseUrl/api/login'); 
 
       final response = await http.post(
         url,
@@ -214,6 +217,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: isLoading 
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                         : const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                
+                const SizedBox(height: 16),
+                
+                // Registration Link
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                    );
+                  },
+                  child: const Text(
+                    "Don't have an account? Register here",
+                    style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],

@@ -3,9 +3,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'auth/login_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
+
   runApp(
     // 1. Wrap the app in a ChangeNotifierProvider for State Management
     ChangeNotifierProvider(
