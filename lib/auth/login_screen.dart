@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http; // To make network requests
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
 import 'package:shared_preferences/shared_preferences.dart'; // NEW IMPORT
 import '../user/user_home_screen.dart';
-import '../vendor/vendor_dashboard_screen.dart';
 import '../vendor/vendor_main_screen.dart';
 import 'register_screen.dart'; // Import the new register screen
 
