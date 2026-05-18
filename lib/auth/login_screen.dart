@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert'; // To decode JSON
 import 'package:http/http.dart' as http; // To make network requests
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
+import 'package:shared_preferences/shared_preferences.dart'; // NEW IMPORT
 import '../user/user_home_screen.dart';
 import '../vendor/vendor_dashboard_screen.dart';
 import '../vendor/vendor_main_screen.dart';
@@ -50,21 +51,28 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      if (response.statusCode == 200 && data['success']) {
-        // Success! Route to the correct screen
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login Successful!'), backgroundColor: Colors.green),
-        );
+      if (response.statusCode == 200) {
+        // REMOVE OR COMMENT OUT THIS LINE:
+        // final String role = data['user']['role']; 
+        
+        final String userId = data['user']['id']; // Grab the dynamic ID from the database!
 
-        if (isUser) {
+        // Save the ID and Role to the phone's local storage
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userId', userId);
+        await prefs.setString('userRole', role); // This will now correctly use the local 'role' variable
+
+        if (!mounted) return;
+        
+        if (role == 'Vendor') {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const UserHomeScreen()),
+            MaterialPageRoute(builder: (context) => const VendorMainScreen()),
           );
         } else {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const VendorMainScreen()),
+            MaterialPageRoute(builder: (context) => const UserHomeScreen()),
           );
         }
       } else {

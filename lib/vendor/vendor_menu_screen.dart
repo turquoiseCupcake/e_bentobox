@@ -1,4 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'add_menu_item_screen.dart';
 
 class VendorMenuScreen extends StatefulWidget {
   const VendorMenuScreen({super.key});
@@ -10,11 +15,57 @@ class VendorMenuScreen extends StatefulWidget {
 class _VendorMenuScreenState extends State<VendorMenuScreen> {
   final Color primaryColor = const Color(0xFFE91E63);
 
-  final List<Map<String, dynamic>> _menuItems = [
-    {'name': 'Chicken Teriyaki', 'price': 59.00, 'rating': 4.9, 'image': Icons.fastfood},
-    {'name': 'Spaghetti', 'price': 59.00, 'rating': 5.0, 'image': Icons.ramen_dining},
-    {'name': 'Sirloin Steak', 'price': 89.00, 'rating': 4.8, 'image': Icons.restaurant},
-  ];
+  List<dynamic> _menuItems = [];
+  bool _isLoading = true;
+  String _baseUrl = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _baseUrl = dotenv.env['API_BASE_URL'] ?? '';
+    _fetchMenuItems();
+  }
+
+  Future<void> _fetchMenuItems() async {
+    setState(() => _isLoading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? vendorId = prefs.getString('userId');
+
+      if (vendorId == null) throw Exception('Vendor not logged in');
+
+      print('--- FETCHING MENU ITEMS ---');
+      print('Vendor ID: $vendorId');
+      print('Requesting URL: $_baseUrl/api/menu-items/$vendorId');
+
+      final response = await http.get(Uri.parse('$_baseUrl/api/menu-items/$vendorId'));
+
+      print('Response Status: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          setState(() {
+            _menuItems = data['items'];
+          });
+        } else {
+          print('Server reported success: false. Message: ${data['message']}');
+        }
+      } else {
+        print('HTTP Error: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching menu: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Failed to load menu items: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,70 +108,107 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
             ),
             const SizedBox(height: 24),
 
-            // Grid View of Food Items
+            // Grid View of Food Items with Pull-to-Refresh
             Expanded(
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 0.75,
-                ),
-                itemCount: _menuItems.length,
-                itemBuilder: (context, index) {
-                  final item = _menuItems[index];
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Image Placeholder
-                        Expanded(
-                          child: Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: primaryColor.withOpacity(0.05),
-                              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                            ),
-                            child: Icon(item['image'], size: 50, color: primaryColor.withOpacity(0.5)),
+              child: _isLoading
+                  ? Center(child: CircularProgressIndicator(color: primaryColor))
+                  : RefreshIndicator(
+                      color: primaryColor,
+                      onRefresh: _fetchMenuItems,
+                      child: _menuItems.isEmpty
+                          // We use a ListView even when empty so the user can still pull down to refresh
+                          ? ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              children: [
+                                SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                                Center(
+                                  child: Text(
+                                    'No menu items yet.\nTap + to add one!\n\n(Pull down to refresh)',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : GridView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(), // Ensures pull-to-refresh works even with few items
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            childAspectRatio: 0.75,
                           ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(item['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
-                              const SizedBox(height: 4),
-                              Text('₱${item['price'].toStringAsFixed(2)}', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 14)),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  const Icon(Icons.star, color: Colors.amber, size: 14),
-                                  const SizedBox(width: 4),
-                                  Text(item['rating'].toString(), style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                          itemCount: _menuItems.length,
+                          itemBuilder: (context, index) {
+                            final item = _menuItems[index];
+                            final imageUrl = '$_baseUrl${item['image_url']}'; // Combine VPS IP + /uploads/image...
+
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
                                 ],
-                              )
-                            ],
-                          ),
-                        )
-                      ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Real Image from Database
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                                      child: item['image_url'] != null
+                                          ? Image.network(
+                                              imageUrl,
+                                              width: double.infinity,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) => Container(
+                                                color: Colors.grey.shade200,
+                                                child: const Icon(Icons.broken_image, color: Colors.grey),
+                                              ),
+                                            )
+                                          : Container(
+                                              color: primaryColor.withOpacity(0.05),
+                                              child: Icon(Icons.fastfood, size: 50, color: primaryColor.withOpacity(0.5)),
+                                            ),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item['name'] ?? 'Unknown Item',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '₱${double.parse(item['price'].toString()).toStringAsFixed(2)}',
+                                          style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 14),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                     ),
-                  );
-                },
-              ),
             ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
-        onPressed: () {
-          // Open Add Item Dialog/Screen
+        onPressed: () async {
+          // Await the Add screen to pop. When it does, fetch the items again!
+          await Navigator.push(context, MaterialPageRoute(builder: (context) => const AddMenuItemScreen()));
+          _fetchMenuItems();
         },
         child: const Icon(Icons.add, color: Colors.white),
       ),
