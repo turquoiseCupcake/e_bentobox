@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // Used for date formatting
+import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../shared/qr_scanner_screen.dart';
 
 class VendorDashboardScreen extends StatefulWidget {
@@ -10,39 +14,91 @@ class VendorDashboardScreen extends StatefulWidget {
 }
 
 class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
-  // Brand color matching the uploaded image
   final Color primaryColor = const Color(0xFFE91E63);
 
-  // Draft state for the calendar
   DateTime _selectedDate = DateTime.now();
+  List<dynamic> _incomingOrders = [];
+  bool _isLoading = true;
+  String _baseUrl = '';
 
-  final List<Map<String, dynamic>> _incomingOrders = [
-    {
-      'id': '8042',
-      'customer': 'Juan Dela Cruz',
-      'items': '1x Pork Sisig, 1x Plain Rice',
-      'total': 85.00,
-      'status': 'Pending',
-    },
-    {
-      'id': '8043',
-      'customer': 'Maria Santos',
-      'items': '2x Chicken Adobo, 2x Plain Rice',
-      'total': 150.00,
-      'status': 'Accepted',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _baseUrl = dotenv.env['API_BASE_URL'] ?? '';
+    
+    // Automatically select tomorrow's date by default, since orders are next-day
+    _selectedDate = DateTime.now().add(const Duration(days: 1));
+    _fetchOrders();
+  }
 
-  void _updateStatus(int index, String newStatus) {
+  // --- API CALL: FETCH ORDERS ---
+  Future<void> _fetchOrders() async {
+    setState(() => _isLoading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? vendorId = prefs.getString('userId');
+
+      if (vendorId == null) throw Exception('Not logged in');
+
+      // Format date for PostgreSQL (YYYY-MM-DD)
+      final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
+
+      final response = await http.get(
+        Uri.parse('$_baseUrl/api/vendors/$vendorId/orders?date=$formattedDate')
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          setState(() {
+            _incomingOrders = data['orders'];
+          });
+        }
+      }
+    } catch (e) {
+      print('Error fetching orders: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to fetch orders')));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- API CALL: UPDATE STATUS ---
+  Future<void> _updateStatus(int index, String newStatus) async {
+    final orderId = _incomingOrders[index]['id'];
+    
+    // Optimistic UI Update (Change it instantly for the user)
     setState(() {
       _incomingOrders[index]['status'] = newStatus;
     });
+
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/api/orders/$orderId/status'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'status': newStatus}),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode != 200 || !data['success']) {
+        throw Exception('Backend rejected status update');
+      }
+    } catch (e) {
+      print('Status update failed: $e');
+      // Rollback UI if it failed
+      _fetchOrders(); 
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to update status'), backgroundColor: Colors.red));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50], // Very light background
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -66,45 +122,35 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- NEW CALENDAR VIEW DRAFT ---
+          // --- HORIZONTAL CALENDAR SCROLL ---
           const SizedBox(height: 8),
           SizedBox(
             height: 90,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: 15, // Show next 14 days + 1 "More" button
+              itemCount: 15, // Next 14 days + More Button
               itemBuilder: (context, index) {
-                // The last item is the 'Expand More' button
                 if (index == 14) {
                   return GestureDetector(
                     onTap: () async {
-                      // Open a full calendar picker when tapped
                       final DateTime? pickedDate = await showDatePicker(
                         context: context,
                         initialDate: _selectedDate.isBefore(DateTime.now()) ? DateTime.now() : _selectedDate,
                         firstDate: DateTime.now(),
-                        lastDate: DateTime.now().add(const Duration(days: 90)), // Max 3 months ahead
+                        lastDate: DateTime.now().add(const Duration(days: 90)),
                         builder: (context, child) {
-                          // Theme the date picker to match brand colors
                           return Theme(
                             data: Theme.of(context).copyWith(
-                              colorScheme: ColorScheme.light(
-                                primary: primaryColor,
-                                onPrimary: Colors.white,
-                                onSurface: Colors.black87,
-                              ),
+                              colorScheme: ColorScheme.light(primary: primaryColor, onPrimary: Colors.white, onSurface: Colors.black87),
                             ),
                             child: child!,
                           );
                         },
                       );
-                      
                       if (pickedDate != null) {
-                        setState(() {
-                          _selectedDate = pickedDate;
-                          // Later: Fetch orders for this specific date here!
-                        });
+                        setState(() => _selectedDate = pickedDate);
+                        _fetchOrders(); // Fetch new data for chosen date!
                       }
                     },
                     child: Container(
@@ -113,44 +159,28 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                          width: 1.5,
-                        ),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+                        border: Border.all(color: Colors.grey.shade300, width: 1.5),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.date_range, color: Colors.grey.shade600, size: 24),
                           const SizedBox(height: 4),
-                          Text(
-                            'MORE',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                          ),
+                          Text('MORE', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold, fontSize: 11)),
                         ],
                       ),
                     ),
                   );
                 }
 
-                // Normal Date Logic
+                // Normal Date Items
                 final date = DateTime.now().add(Duration(days: index));
                 final isSelected = date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year;
-                
-                // Mock logic: Show a dot if it's today or tomorrow
-                final hasOrders = index == 0 || index == 1;
 
                 return GestureDetector(
                   onTap: () {
-                    setState(() {
-                      _selectedDate = date;
-                      // Later: Fetch orders for this specific date here!
-                    });
+                    setState(() => _selectedDate = date);
+                    _fetchOrders(); // Fetch new data for chosen date!
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
@@ -159,10 +189,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                     decoration: BoxDecoration(
                       color: isSelected ? primaryColor : Colors.white,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isSelected ? primaryColor : Colors.grey.shade200,
-                        width: 1.5,
-                      ),
+                      border: Border.all(color: isSelected ? primaryColor : Colors.grey.shade200, width: 1.5),
                       boxShadow: isSelected
                           ? [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]
                           : [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
@@ -171,35 +198,14 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          DateFormat('EEE').format(date).toUpperCase(), // e.g., MON, TUE
-                          style: TextStyle(
-                            color: isSelected ? Colors.white70 : Colors.grey.shade500,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
+                          DateFormat('EEE').format(date).toUpperCase(),
+                          style: TextStyle(color: isSelected ? Colors.white70 : Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 11),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${date.day}', // e.g., 16, 17
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.black87,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
-                          ),
+                          '${date.day}',
+                          style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 20),
                         ),
-                        const SizedBox(height: 4),
-                        // Small dot indicator for pending/active orders
-                        if (hasOrders)
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: isSelected ? Colors.white : primaryColor,
-                              shape: BoxShape.circle,
-                            ),
-                          )
-                        else
-                          const SizedBox(height: 6), // Spacer if no orders to keep alignment
                       ],
                     ),
                   ),
@@ -217,128 +223,134 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                   'Orders for ${DateFormat('MMMM d').format(_selectedDate)}',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
                 ),
-                Text(
-                  '${_incomingOrders.length} Items',
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-                ),
+                if (!_isLoading)
+                  Text(
+                    '${_incomingOrders.length} Items',
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                  ),
               ],
             ),
           ),
-          // --- END CALENDAR VIEW DRAFT ---
 
-          // --- ORDERS LIST ---
+          // --- REAL ORDERS LIST ---
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: _incomingOrders.length,
-              itemBuilder: (context, index) {
-                final order = _incomingOrders[index];
-                final isPending = order['status'] == 'Pending';
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.03),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: isPending ? Colors.orange.shade50 : Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              order['status'],
-                              style: TextStyle(
-                                color: isPending ? Colors.orange.shade800 : Colors.green.shade800,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            '₱${order['total'].toStringAsFixed(2)}',
-                            style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 18),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(order['customer'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 4),
-                      Text(order['items'], style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-                      const SizedBox(height: 16),
-                      
-                      if (isPending)
-                        Row(
+            child: _isLoading 
+                ? Center(child: CircularProgressIndicator(color: primaryColor))
+                : _incomingOrders.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.grey.shade700,
-                                  side: BorderSide(color: Colors.grey.shade300),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                ),
-                                onPressed: () => _updateStatus(index, 'Rejected'),
-                                child: const Text('Reject'),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: primaryColor,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  elevation: 0,
-                                ),
-                                onPressed: () => _updateStatus(index, 'Accepted'),
-                                child: const Text('Accept', style: TextStyle(fontWeight: FontWeight.bold)),
-                              ),
-                            ),
+                            Icon(Icons.inbox_outlined, size: 60, color: Colors.grey.shade300),
+                            const SizedBox(height: 16),
+                            Text('No orders for this date.', style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
                           ],
-                        )
-                      else if (order['status'] == 'Accepted')
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryColor.withOpacity(0.1),
-                              foregroundColor: primaryColor,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              elevation: 0,
-                            ),
-                            icon: const Icon(Icons.qr_code_scanner),
-                            label: const Text('Scan & Mark Ready', style: TextStyle(fontWeight: FontWeight.bold)),
-                            onPressed: () async {
-                              final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => const QRScannerScreen()));
-                              if (result != null && context.mounted) {
-                                _updateStatus(index, 'Ready for Pickup');
-                              }
-                            },
-                          ),
-                        )
-                    ],
-                  ),
-                );
-              },
-            ),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        color: primaryColor,
+                        onRefresh: _fetchOrders,
+                        child: ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          itemCount: _incomingOrders.length,
+                          itemBuilder: (context, index) {
+                            final order = _incomingOrders[index];
+                            final isPending = order['status'] == 'Pending';
+                            // Parse total safely incase Postgres sends it as a string
+                            final double totalAmount = double.tryParse(order['total'].toString()) ?? 0.0;
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: isPending ? Colors.orange.shade50 : (order['status'] == 'Rejected' ? Colors.red.shade50 : Colors.green.shade50),
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          order['status'],
+                                          style: TextStyle(
+                                            color: isPending ? Colors.orange.shade800 : (order['status'] == 'Rejected' ? Colors.red.shade800 : Colors.green.shade800),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        '₱${totalAmount.toStringAsFixed(2)}',
+                                        style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(order['customer'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  const SizedBox(height: 4),
+                                  Text(order['items'], style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+                                  const SizedBox(height: 16),
+                                  
+                                  if (isPending)
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: OutlinedButton(
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: Colors.grey.shade700, side: BorderSide(color: Colors.grey.shade300),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12),
+                                            ),
+                                            onPressed: () => _updateStatus(index, 'Rejected'),
+                                            child: const Text('Reject'),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: primaryColor, foregroundColor: Colors.white, elevation: 0,
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12),
+                                            ),
+                                            onPressed: () => _updateStatus(index, 'Accepted'),
+                                            child: const Text('Accept', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  else if (order['status'] == 'Accepted')
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: primaryColor.withOpacity(0.1), foregroundColor: primaryColor, elevation: 0,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12),
+                                        ),
+                                        icon: const Icon(Icons.qr_code_scanner),
+                                        label: const Text('Scan & Mark Ready', style: TextStyle(fontWeight: FontWeight.bold)),
+                                        onPressed: () async {
+                                          final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => const QRScannerScreen()));
+                                          if (result != null && context.mounted) {
+                                            _updateStatus(index, 'Ready'); // Or 'Ready for Pickup' depending on your strict database constraint
+                                          }
+                                        },
+                                      ),
+                                    )
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
           ),
         ],
       ),
