@@ -1,11 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'dart:convert'; // To decode JSON
-import 'package:http/http.dart' as http; // To make network requests
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
-import 'package:shared_preferences/shared_preferences.dart'; // NEW IMPORT
-import '../user/user_home_screen.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../user/user_main_screen.dart'; // <-- CHANGED TO MAIN SCREEN
 import '../vendor/vendor_main_screen.dart';
-import 'register_screen.dart'; // Import the new register screen
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,29 +15,26 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Toggle state: true = User, false = Vendor
-  bool isUser = true;
-  bool isLoading = false; // To show a loading spinner
-
-  // Controllers to read text from the fields
+  final _formKey = GlobalKey<FormState>();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  
+  bool _isLoading = false;
+  bool _isVendor = false; // Toggle between Student and Vendor
 
-  // The actual backend login logic
-  Future<void> _handleLogin() async {
-    setState(() {
-      isLoading = true;
-    });
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
 
     try {
-      final role = isUser ? 'User' : 'Vendor';
+      final baseUrl = dotenv.env['API_BASE_URL'] ?? '';
       
-      // Read the base URL securely from the .env file
-      final baseUrl = dotenv.env['API_BASE_URL'];
-      final url = Uri.parse('$baseUrl/api/login'); 
+      // The role is determined by the toggle switch on the UI
+      final String role = _isVendor ? 'Vendor' : 'Student';
 
       final response = await http.post(
-        url,
+        Uri.parse('$baseUrl/api/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'email': _emailController.text.trim(),
@@ -46,23 +43,18 @@ class _LoginScreenState extends State<LoginScreen> {
         }),
       );
 
-      final data = jsonDecode(response.body);
-
-      if (!mounted) return;
-
       if (response.statusCode == 200) {
-        // REMOVE OR COMMENT OUT THIS LINE:
-        // final String role = data['user']['role']; 
-        
-        final String userId = data['user']['id']; // Grab the dynamic ID from the database!
+        final data = jsonDecode(response.body);
+        final String userId = data['user']['id'];
 
-        // Save the ID and Role to the phone's local storage
+        // Save session to phone storage
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('userId', userId);
-        await prefs.setString('userRole', role); // This will now correctly use the local 'role' variable
+        await prefs.setString('userRole', role);
 
         if (!mounted) return;
         
+        // --- UPDATED NAVIGATION LOGIC ---
         if (role == 'Vendor') {
           Navigator.pushReplacement(
             context,
@@ -71,178 +63,98 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const UserHomeScreen()),
+            MaterialPageRoute(builder: (context) => const UserMainScreen()), // Routes to bottom nav
           );
         }
       } else {
-        // Failed: Show backend error message (e.g., "Account banned" or "Invalid password")
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data['message'] ?? 'Login failed'), backgroundColor: Colors.red),
-        );
+        final data = jsonDecode(response.body);
+        throw Exception(data['message'] ?? 'Login failed');
       }
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Network Error. Is the server running?'), backgroundColor: Colors.red),
-      );
-      print("Login Error: $e");
-    } finally {
       if (mounted) {
-        setState(() {
-          isLoading = false;
-        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red),
+        );
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // Dynamic theme: Pink for vendors, Orange for students
+    final primaryColor = _isVendor ? const Color(0xFFE91E63) : Colors.orange;
+
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
+      backgroundColor: Colors.white,
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo or App Name Placeholder
-                const Icon(Icons.bento_rounded, size: 80, color: Colors.orange),
+                Icon(Icons.bento, size: 80, color: primaryColor),
                 const SizedBox(height: 16),
-                const Text(
-                  'E-Bentobox',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orange,
-                  ),
-                ),
-                const SizedBox(height: 40),
-
-                // Custom Role Toggle Slider
-                Container(
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(25),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => setState(() => isUser = true),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: isUser ? Colors.orange : Colors.transparent,
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'User',
-                              style: TextStyle(
-                                color: isUser ? Colors.white : Colors.black54,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => setState(() => isUser = false),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: !isUser ? Colors.orange : Colors.transparent,
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'Vendor',
-                              style: TextStyle(
-                                color: !isUser ? Colors.white : Colors.black54,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                Text('E-Bentobox', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: primaryColor)),
                 const SizedBox(height: 32),
 
-                // Email Field
-                TextField(
+                // Role Toggle
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text('Student', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Switch(
+                      value: _isVendor,
+                      activeColor: const Color(0xFFE91E63),
+                      inactiveThumbColor: Colors.orange,
+                      inactiveTrackColor: Colors.orange.shade200,
+                      onChanged: (val) => setState(() => _isVendor = val),
+                    ),
+                    const Text('Vendor', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                TextFormField(
                   controller: _emailController,
                   decoration: InputDecoration(
                     labelText: 'Email',
                     prefixIcon: const Icon(Icons.email_outlined),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
+                  validator: (val) => val!.isEmpty || !val.contains('@') ? 'Enter a valid email' : null,
                 ),
                 const SizedBox(height: 16),
 
-                // Password Field
-                TextField(
+                TextFormField(
                   controller: _passwordController,
                   obscureText: true,
                   decoration: InputDecoration(
                     labelText: 'Password',
                     prefixIcon: const Icon(Icons.lock_outline),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
+                  validator: (val) => val!.isEmpty ? 'Enter your password' : null,
                 ),
                 const SizedBox(height: 32),
 
-                // Real Login Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                _isLoading
+                    ? CircularProgressIndicator(color: primaryColor)
+                    : SizedBox(
+                        width: double.infinity,
+                        height: 55,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: _login,
+                          child: const Text('Log In', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                        ),
                       ),
-                    ),
-                    onPressed: isLoading ? null : _handleLogin,
-                    child: isLoading 
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-                
-                const SizedBox(height: 16),
-                
-                // Registration Link
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const RegisterScreen()),
-                    );
-                  },
-                  child: const Text(
-                    "Don't have an account? Register here",
-                    style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
-                  ),
-                ),
               ],
             ),
           ),
@@ -251,6 +163,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
-// NOTE: You can now delete the entire MockVendorDashboardScreen class
-// that was previously at the bottom of this file!
