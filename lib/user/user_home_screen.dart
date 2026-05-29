@@ -4,9 +4,12 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_map/flutter_map.dart'; // NEW IMPORT
+import 'package:latlong2/latlong.dart'; // NEW IMPORT
 import '../main.dart'; // For BentoCartProvider
 import 'carenderia_view_screen.dart';
 import 'cart_screen.dart';
+import 'vendor_map_screen.dart'; // IMPORT THE NEW MAP SCREEN!
 
 class UserHomeScreen extends StatefulWidget {
   const UserHomeScreen({super.key});
@@ -26,10 +29,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   
   bool _isLoading = true;
   String _searchQuery = '';
-  String _selectedCategory = ''; // New state for category filter
+  String _selectedCategory = ''; 
   String _baseUrl = '';
 
-  // Categories for the UI
   final List<Map<String, dynamic>> _categories = [
     {'name': 'Ulam', 'icon': Icons.set_meal},
     {'name': 'Rice', 'icon': Icons.rice_bowl},
@@ -41,14 +43,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _baseUrl = dotenv.env['API_BASE_URL'] ?? '';
+    _baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
     _fetchExploreData();
   }
 
   Future<void> _fetchExploreData() async {
     setState(() => _isLoading = true);
     try {
-      // Fetch both APIs concurrently
       final responses = await Future.wait([
         http.get(Uri.parse('$_baseUrl/api/menu-items')),
         http.get(Uri.parse('$_baseUrl/api/vendors')),
@@ -62,6 +63,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           setState(() {
             _allFoods = foodData['items'] ?? [];
             _allVendors = vendorData['vendors'] ?? [];
+            _filteredFoods = _allFoods;
+            _filteredVendors = _allVendors;
             _applyFilters();
           });
         }
@@ -73,17 +76,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     }
   }
 
-  // Unified filter function for both Search and Category clicks
   void _applyFilters() {
     setState(() {
-      // Filter Foods based on Search Query AND Category
       _filteredFoods = _allFoods.where((f) {
         final matchesSearch = f['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
         final matchesCategory = _selectedCategory.isEmpty || f['category'] == _selectedCategory;
         return matchesSearch && matchesCategory;
       }).toList();
 
-      // Filter Vendors based on Search Query
       _filteredVendors = _allVendors.where((v) {
         return v['store_name'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
       }).toList();
@@ -96,7 +96,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   void _onCategorySelected(String category) {
-    // If clicking the same category, deselect it. Otherwise, select the new one.
     _selectedCategory = (_selectedCategory == category) ? '' : category;
     _applyFilters();
   }
@@ -111,7 +110,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ? Center(child: CircularProgressIndicator(color: primaryColor))
         : CustomScrollView(
             slivers: [
-              // --- VIBRANT HEADER & SEARCH BAR ---
               SliverToBoxAdapter(
                 child: Container(
                   padding: const EdgeInsets.only(top: 60, left: 24, right: 24, bottom: 30),
@@ -133,7 +131,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                               Text('Reserve your lunch for tomorrow', style: TextStyle(color: Colors.white70, fontSize: 14)),
                             ],
                           ),
-                          // Cart Icon Badge
                           Stack(
                             children: [
                               IconButton(
@@ -154,7 +151,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                         ],
                       ),
                       const SizedBox(height: 24),
-                      // Search Bar
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         decoration: BoxDecoration(
@@ -176,7 +172,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 ),
               ),
 
-              // --- CATEGORIES (Hidden while searching) ---
               if (_searchQuery.isEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -232,7 +227,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   ),
                 ),
 
-              // --- FOOD RESULTS SECTION ---
               if (_filteredFoods.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -249,7 +243,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               if (_filteredFoods.isNotEmpty)
                 SliverToBoxAdapter(
                   child: SizedBox(
-                    height: _searchQuery.isEmpty ? 220 : 250, // Slightly taller if wrapping
+                    height: _searchQuery.isEmpty ? 220 : 250,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -258,40 +252,58 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                         final food = _filteredFoods[index];
                         final imageUrl = food['image_url'] != null ? '$_baseUrl${food['image_url']}' : null;
                         
-                        return Container(
-                          width: 160,
-                          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Food Image
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                                  child: imageUrl != null
-                                      ? CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover, width: double.infinity)
-                                      : Container(color: primaryColor.withOpacity(0.1), child: Icon(Icons.fastfood, color: primaryColor.withOpacity(0.5), size: 40)),
+                        return GestureDetector(
+                          onTap: () {
+                            final vendorId = food['vendor_id'];
+                            final vendorMatch = _allVendors.where((v) => v['id'] == vendorId).toList();
+                            
+                            if (vendorMatch.isNotEmpty) {
+                              Navigator.push(
+                                context, 
+                                MaterialPageRoute(
+                                  builder: (context) => CarenderiaViewScreen(vendor: vendorMatch.first)
+                                )
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Carenderia details not available.')),
+                              );
+                            }
+                          },
+                          child: Container(
+                            width: 160,
+                            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                                    child: imageUrl != null
+                                        ? CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover, width: double.infinity)
+                                        : Container(color: primaryColor.withOpacity(0.1), child: Icon(Icons.fastfood, color: primaryColor.withOpacity(0.5), size: 40)),
+                                  ),
                                 ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.all(12.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(food['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    const SizedBox(height: 4),
-                                    Text(food['store_name'] ?? '', style: TextStyle(color: Colors.grey.shade500, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    const SizedBox(height: 8),
-                                    Text('₱${double.parse(food['price'].toString()).toStringAsFixed(2)}', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 14)),
-                                  ],
-                                ),
-                              )
-                            ],
+                                Padding(
+                                  padding: const EdgeInsets.all(12.0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(food['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      const SizedBox(height: 4),
+                                      Text(food['store_name'] ?? '', style: TextStyle(color: Colors.grey.shade500, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      const SizedBox(height: 8),
+                                      Text('₱${double.parse(food['price'].toString()).toStringAsFixed(2)}', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 14)),
+                                    ],
+                                  ),
+                                )
+                              ],
+                            ),
                           ),
                         );
                       },
@@ -299,7 +311,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   ),
                 ),
                 
-              // If filtering by category/search and no foods found
               if (_filteredFoods.isEmpty && _filteredVendors.isEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -316,7 +327,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   ),
                 ),
 
-              // --- VENDORS RESULTS SECTION ---
               if (_filteredVendors.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -335,10 +345,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                       final vendor = _filteredVendors[index];
                       final coverUrl = vendor['cover_image_url'] != null ? '$_baseUrl${vendor['cover_image_url']}' : null;
                       final profileUrl = vendor['profile_image_url'] != null ? '$_baseUrl${vendor['profile_image_url']}' : null;
+                      final hasLocation = vendor['latitude'] != null && vendor['longitude'] != null;
 
                       return GestureDetector(
                         onTap: () {
-                          // Pass the selected vendor object to the CarenderiaViewScreen
                           Navigator.push(context, MaterialPageRoute(builder: (context) => CarenderiaViewScreen(vendor: vendor)));
                         },
                         child: Container(
@@ -351,20 +361,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Cover Photo & Profile Avatar Stack
                               SizedBox(
                                 height: 140,
                                 child: Stack(
                                   clipBehavior: Clip.none,
                                   children: [
-                                    // Cover Photo
                                     ClipRRect(
                                       borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                                       child: coverUrl != null 
                                           ? CachedNetworkImage(imageUrl: coverUrl, width: double.infinity, height: 110, fit: BoxFit.cover)
                                           : Container(width: double.infinity, height: 110, color: Colors.grey.shade300, child: const Icon(Icons.storefront, color: Colors.grey)),
                                     ),
-                                    // Profile Photo Overlapping
                                     Positioned(
                                       bottom: 0,
                                       left: 16,
@@ -381,21 +388,79 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                                   ],
                                 ),
                               ),
-                              // Vendor Details
                               Padding(
                                 padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(vendor['store_name'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(Icons.location_on, size: 14, color: Colors.grey.shade500),
-                                        const SizedBox(width: 4),
-                                        Text(vendor['location_description'] ?? 'Campus Area', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                                      ],
+                                    // Wrap the text column in Expanded so it doesn't push the map off screen
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(vendor['store_name'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Icon(Icons.location_on, size: 14, color: Colors.grey.shade500),
+                                              const SizedBox(width: 4),
+                                              Expanded(
+                                                child: Text(vendor['location_description'] ?? 'Campus Area', style: TextStyle(color: Colors.grey.shade600, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
                                     ),
+                                    
+                                    // The New Mini-Map Preview Box
+                                    if (hasLocation)
+                                      GestureDetector(
+                                        onTap: () {
+                                          // Expands to the full screen map
+                                          Navigator.push(context, MaterialPageRoute(builder: (context) => VendorMapScreen(vendor: vendor)));
+                                        },
+                                        child: Container(
+                                          height: 70, // Matches your drawing proportions
+                                          width: 100,
+                                          margin: const EdgeInsets.only(left: 12),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(color: Colors.grey.shade300, width: 1.5),
+                                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(10),
+                                            child: IgnorePointer( // Prevents the mini-map from stealing scroll gestures
+                                              child: FlutterMap(
+                                                options: MapOptions(
+                                                  initialCenter: LatLng(vendor['latitude'], vendor['longitude']),
+                                                  initialZoom: 14.0,
+                                                  interactionOptions: const InteractionOptions(
+                                                    flags: InteractiveFlag.none, // Lock the map in place
+                                                  ),
+                                                ),
+                                                children: [
+                                                  TileLayer(
+                                                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                                    userAgentPackageName: 'com.ebentobox.app',
+                                                  ),
+                                                  MarkerLayer(
+                                                    markers: [
+                                                      Marker(
+                                                        point: LatLng(vendor['latitude'], vendor['longitude']),
+                                                        width: 24,
+                                                        height: 24,
+                                                        child: const Icon(Icons.location_on, color: Colors.red, size: 24),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      )
                                   ],
                                 ),
                               ),
@@ -408,7 +473,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   ),
                 ),
                 
-              // Padding at the bottom for scroll clearance
               const SliverToBoxAdapter(child: SizedBox(height: 40)),
             ],
           ),

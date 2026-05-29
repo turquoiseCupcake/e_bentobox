@@ -4,8 +4,12 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+
 import '../main.dart'; // For BentoCartProvider
 import 'cart_screen.dart'; // Import the new Cart Screen
+import 'vendor_map_screen.dart'; // Import the Map Screen
 
 class CarenderiaViewScreen extends StatefulWidget {
   final Map<String, dynamic> vendor;
@@ -61,6 +65,11 @@ class _CarenderiaViewScreenState extends State<CarenderiaViewScreen> {
     final coverUrl = widget.vendor['cover_image_url'] != null ? '$_baseUrl${widget.vendor['cover_image_url']}' : null;
     final profileUrl = widget.vendor['profile_image_url'] != null ? '$_baseUrl${widget.vendor['profile_image_url']}' : null;
 
+    // Safely parse map coordinates
+    final double? lat = widget.vendor['latitude'] != null ? double.tryParse(widget.vendor['latitude'].toString()) : null;
+    final double? lng = widget.vendor['longitude'] != null ? double.tryParse(widget.vendor['longitude'].toString()) : null;
+    final bool hasLocation = lat != null && lng != null;
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: CustomScrollView(
@@ -86,7 +95,7 @@ class _CarenderiaViewScreenState extends State<CarenderiaViewScreen> {
                           imageUrl: coverUrl,
                           fit: BoxFit.cover,
                           colorBlendMode: BlendMode.darken,
-                          color: Colors.black.withOpacity(0.3), // Darken slightly for text readability
+                          color: Colors.black.withOpacity(0.3), 
                         )
                       : Container(color: primaryColor),
                   // Gradient overlay for smooth transition
@@ -111,6 +120,7 @@ class _CarenderiaViewScreenState extends State<CarenderiaViewScreen> {
               padding: const EdgeInsets.all(20.0),
               child: Row(
                 children: [
+                  // Profile Avatar
                   Container(
                     decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade200, width: 2)),
                     child: CircleAvatar(
@@ -121,6 +131,8 @@ class _CarenderiaViewScreenState extends State<CarenderiaViewScreen> {
                     ),
                   ),
                   const SizedBox(width: 16),
+                  
+                  // Text Details
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -148,7 +160,63 @@ class _CarenderiaViewScreenState extends State<CarenderiaViewScreen> {
                         ]
                       ],
                     ),
-                  )
+                  ),
+                  
+                  // --- NEW: MINI MAP PREVIEW ---
+                  if (hasLocation) ...[
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => VendorMapScreen(
+                              vendor: widget.vendor, // Pass the whole vendor object!
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: IgnorePointer( // IgnorePointer ensures the map doesn't swallow scroll gestures
+                            child: FlutterMap(
+                              options: MapOptions(
+                                initialCenter: LatLng(lat, lng),
+                                initialZoom: 15.0,
+                                interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                              ),
+                              children: [
+                                TileLayer(
+                                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                  userAgentPackageName: 'com.ebentobox.app',
+                                ),
+                                MarkerLayer(
+                                  markers: [
+                                    Marker(
+                                      point: LatLng(lat, lng),
+                                      width: 30,
+                                      height: 30,
+                                      child: const Icon(Icons.location_on, color: Colors.red, size: 30),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -248,7 +316,6 @@ class _CarenderiaViewScreenState extends State<CarenderiaViewScreen> {
                                 elevation: 0,
                               ),
                               onPressed: () {
-                                // Add to global Cart Provider with cleanly parsed price
                                 context.read<BentoCartProvider>().addItem({
                                   ...item,
                                   'price': price, 
@@ -280,7 +347,6 @@ class _CarenderiaViewScreenState extends State<CarenderiaViewScreen> {
             const SliverToBoxAdapter(child: SizedBox(height: 80)),
         ],
       ),
-      // Floating Cart Button
       floatingActionButton: cartCount > 0 
           ? FloatingActionButton.extended(
               backgroundColor: Colors.deepOrange,
@@ -293,7 +359,7 @@ class _CarenderiaViewScreenState extends State<CarenderiaViewScreen> {
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
             )
-          : null, // Hide FAB if cart is empty to keep UI clean
+          : null,
     );
   }
 }

@@ -4,7 +4,10 @@ import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../shared/qr_scanner_screen.dart';
+import 'vendor_map_screen.dart'; // Import to use the full map screen
 
 class UserOrdersScreen extends StatefulWidget {
   const UserOrdersScreen({super.key});
@@ -252,6 +255,11 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
 
                             final double totalAmount = double.tryParse(order['total'].toString()) ?? 0.0;
 
+                            // Safely parse coordinates if they exist
+                            final double? lat = order['vendor_latitude'] != null ? double.tryParse(order['vendor_latitude'].toString()) : null;
+                            final double? lng = order['vendor_longitude'] != null ? double.tryParse(order['vendor_longitude'].toString()) : null;
+                            final bool hasLocation = lat != null && lng != null;
+
                             return Card(
                               margin: const EdgeInsets.only(bottom: 16),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -286,10 +294,84 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                       ],
                                     ),
                                     const Divider(height: 24),
-                                    Text(order['vendor_name'] ?? 'Carenderia', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                                    const SizedBox(height: 4),
-                                    Text(order['items'] ?? '', style: const TextStyle(color: Colors.black54)),
-                                    const SizedBox(height: 16),
+                                    
+                                    // Order Details + Mini Map Row
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(order['vendor_name'] ?? 'Carenderia', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                              const SizedBox(height: 4),
+                                              Text(order['items'] ?? '', style: const TextStyle(color: Colors.black54)),
+                                              const SizedBox(height: 16),
+                                            ],
+                                          ),
+                                        ),
+                                        if (hasLocation) ...[
+                                          const SizedBox(width: 12),
+                                          GestureDetector(
+                                            onTap: () {
+                                              // We construct a temporary vendor object to pass to the Map Screen
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => VendorMapScreen(
+                                                    vendor: {
+                                                      'store_name': order['vendor_name'],
+                                                      'latitude': lat,
+                                                      'longitude': lng,
+                                                      'location_description': order['location_description'] // Might be null, map screen handles it
+                                                    }
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            child: Container(
+                                              width: 70,
+                                              height: 70,
+                                              decoration: BoxDecoration(
+                                                borderRadius: BorderRadius.circular(12),
+                                                border: Border.all(color: Colors.grey.shade300),
+                                                boxShadow: [
+                                                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
+                                                ],
+                                              ),
+                                              child: ClipRRect(
+                                                borderRadius: BorderRadius.circular(12),
+                                                child: IgnorePointer( // Prevents map from swallowing scroll gestures
+                                                  child: FlutterMap(
+                                                    options: MapOptions(
+                                                      initialCenter: LatLng(lat, lng),
+                                                      initialZoom: 15.0,
+                                                      interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                                                    ),
+                                                    children: [
+                                                      TileLayer(
+                                                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                                        userAgentPackageName: 'com.ebentobox.app',
+                                                      ),
+                                                      MarkerLayer(
+                                                        markers: [
+                                                          Marker(
+                                                            point: LatLng(lat, lng),
+                                                            width: 30,
+                                                            height: 30,
+                                                            child: const Icon(Icons.location_on, color: Colors.red, size: 30),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ]
+                                      ],
+                                    ),
                                     
                                     // Action logic based on status
                                     if (isReady)
