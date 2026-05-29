@@ -4,8 +4,9 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../user/user_main_screen.dart'; // <-- CHANGED TO MAIN SCREEN
+import '../user/user_main_screen.dart';
 import '../vendor/vendor_main_screen.dart';
+import 'register_screen.dart'; // Import the Register Screen
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -28,10 +29,10 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final baseUrl = dotenv.env['API_BASE_URL'] ?? '';
+      final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
       
       // The role is determined by the toggle switch on the UI
-      final String role = _isVendor ? 'Vendor' : 'Student';
+      final String role = _isVendor ? 'Vendor' : 'User'; // Note: Changed to 'User' to match backend expectation
 
       final response = await http.post(
         Uri.parse('$baseUrl/api/login'),
@@ -54,7 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (!mounted) return;
         
-        // --- UPDATED NAVIGATION LOGIC ---
+        // --- NAVIGATION LOGIC ---
         if (role == 'Vendor') {
           Navigator.pushReplacement(
             context,
@@ -63,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const UserMainScreen()), // Routes to bottom nav
+            MaterialPageRoute(builder: (context) => const UserMainScreen()), 
           );
         }
       } else {
@@ -83,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamic theme: Pink for vendors, Orange for students
+    // Dynamic theme: Pink for vendors, Orange for users
     final primaryColor = _isVendor ? const Color(0xFFE91E63) : Colors.orange;
 
     return Scaffold(
@@ -143,17 +144,35 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 _isLoading
                     ? CircularProgressIndicator(color: primaryColor)
-                    : SizedBox(
-                        width: double.infinity,
-                        height: 55,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryColor,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    : Column(
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            height: 55,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: primaryColor,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              onPressed: _login,
+                              child: const Text('Log In', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                            ),
                           ),
-                          onPressed: _login,
-                          child: const Text('Log In', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                        ),
+                          const SizedBox(height: 16),
+                          // Registration Text Button
+                          TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                              );
+                            },
+                            child: Text(
+                              "Don't have an account? Register here",
+                              style: TextStyle(color: primaryColor, fontWeight: FontWeight.w600, fontSize: 15),
+                            ),
+                          ),
+                        ],
                       ),
               ],
             ),

@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
 import 'auth/login_screen.dart';
 
 Future<void> main() async {
@@ -61,6 +61,7 @@ class BentoCartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ADD THIS NEW FUNCTION TO EMPTY THE CART AFTER PAYMENT
   void clearCart() {
     _cartItems.clear();
     _reservationDate = null;

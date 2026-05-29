@@ -4,6 +4,10 @@ import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../shared/qr_scanner_screen.dart';
 
 class VendorDashboardScreen extends StatefulWidget {
@@ -24,9 +28,9 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _baseUrl = dotenv.env['API_BASE_URL'] ?? '';
+    _baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
     
-    // Automatically select tomorrow's date by default, since orders are next-day
+    // Automatically select tomorrow's date by default
     _selectedDate = DateTime.now().add(const Duration(days: 1));
     _fetchOrders();
   }
@@ -40,7 +44,6 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
 
       if (vendorId == null) throw Exception('Not logged in');
 
-      // Format date for PostgreSQL (YYYY-MM-DD)
       final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
 
       final response = await http.get(
@@ -56,7 +59,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
         }
       }
     } catch (e) {
-      print('Error fetching orders: $e');
+      debugPrint('Error fetching orders: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to fetch orders')));
       }
@@ -69,7 +72,6 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
   Future<void> _updateStatus(int index, String newStatus) async {
     final orderId = _incomingOrders[index]['id'];
     
-    // Optimistic UI Update (Change it instantly for the user)
     setState(() {
       _incomingOrders[index]['status'] = newStatus;
     });
@@ -86,13 +88,82 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
         throw Exception('Backend rejected status update');
       }
     } catch (e) {
-      print('Status update failed: $e');
-      // Rollback UI if it failed
+      debugPrint('Status update failed: $e');
       _fetchOrders(); 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to update status'), backgroundColor: Colors.red));
       }
     }
+  }
+
+  // --- PDF QR CODE GENERATOR ---
+  Future<void> _generateAndPrintQrCodes() async {
+    final doc = pw.Document();
+    const uuid = Uuid();
+
+    // Generate 24 unique IDs for a single A4 sticker sheet
+    final List<String> qrDataList = List.generate(24, (index) => uuid.v4());
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (pw.Context context) {
+          return [
+            pw.Header(
+              level: 0,
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('E-Bentobox - QR Stickers', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                  pw.Text(DateFormat('MMM dd, yyyy').format(DateTime.now()), style: const pw.TextStyle(fontSize: 14)),
+                ]
+              )
+            ),
+            pw.SizedBox(height: 20),
+            // Use Wrap to create a grid of QR codes
+            pw.Wrap(
+              spacing: 20,
+              runSpacing: 20,
+              children: qrDataList.map((data) {
+                return pw.Container(
+                  width: 110,
+                  padding: const pw.EdgeInsets.all(8),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey400, width: 1, style: pw.BorderStyle.dashed),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                  ),
+                  child: pw.Column(
+                    mainAxisAlignment: pw.MainAxisAlignment.center,
+                    children: [
+                      pw.BarcodeWidget(
+                        data: data,
+                        width: 80,
+                        height: 80,
+                        barcode: pw.Barcode.qrCode(),
+                        drawText: false,
+                      ),
+                      pw.SizedBox(height: 8),
+                      pw.Text(
+                        data.substring(0, 8).toUpperCase(), // Show a short hash below it
+                        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+                      ),
+                      pw.Text('Bento Box ID', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ];
+        },
+      ),
+    );
+
+    // This opens the native Android/iOS print and save dialog!
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => doc.save(),
+      name: 'E-Bentobox_QR_Stickers_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf',
+    );
   }
 
   @override
@@ -110,10 +181,16 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
           ],
         ),
         actions: [
+          // NEW: Print/Download QR Codes Button
+          IconButton(
+            icon: Icon(Icons.print_outlined, color: primaryColor),
+            tooltip: 'Generate QR Stickers',
+            onPressed: _generateAndPrintQrCodes,
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: CircleAvatar(
-              backgroundColor: primaryColor.withOpacity(0.1),
+              backgroundColor: primaryColor.withValues(alpha: 0.1),
               child: Icon(Icons.notifications_none, color: primaryColor),
             ),
           )
@@ -129,7 +206,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: 15, // Next 14 days + More Button
+              itemCount: 15,
               itemBuilder: (context, index) {
                 if (index == 14) {
                   return GestureDetector(
@@ -150,7 +227,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                       );
                       if (pickedDate != null) {
                         setState(() => _selectedDate = pickedDate);
-                        _fetchOrders(); // Fetch new data for chosen date!
+                        _fetchOrders();
                       }
                     },
                     child: Container(
@@ -173,14 +250,13 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                   );
                 }
 
-                // Normal Date Items
                 final date = DateTime.now().add(Duration(days: index));
                 final isSelected = date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year;
 
                 return GestureDetector(
                   onTap: () {
                     setState(() => _selectedDate = date);
-                    _fetchOrders(); // Fetch new data for chosen date!
+                    _fetchOrders();
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
@@ -191,8 +267,8 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: isSelected ? primaryColor : Colors.grey.shade200, width: 1.5),
                       boxShadow: isSelected
-                          ? [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]
-                          : [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+                          ? [BoxShadow(color: primaryColor.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))]
+                          : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 4, offset: const Offset(0, 2))],
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -257,7 +333,6 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                           itemBuilder: (context, index) {
                             final order = _incomingOrders[index];
                             final isPending = order['status'] == 'Pending';
-                            // Parse total safely incase Postgres sends it as a string
                             final double totalAmount = double.tryParse(order['total'].toString()) ?? 0.0;
 
                             return Container(
@@ -266,7 +341,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(20),
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -332,7 +407,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                       width: double.infinity,
                                       child: ElevatedButton.icon(
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: primaryColor.withOpacity(0.1), foregroundColor: primaryColor, elevation: 0,
+                                          backgroundColor: primaryColor.withValues(alpha: 0.1), foregroundColor: primaryColor, elevation: 0,
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12),
                                         ),
                                         icon: const Icon(Icons.qr_code_scanner),
@@ -340,7 +415,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                         onPressed: () async {
                                           final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => const QRScannerScreen()));
                                           if (result != null && context.mounted) {
-                                            _updateStatus(index, 'Ready'); // Or 'Ready for Pickup' depending on your strict database constraint
+                                            _updateStatus(index, 'Ready');
                                           }
                                         },
                                       ),

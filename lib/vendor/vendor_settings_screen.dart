@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../auth/login_screen.dart';
 
 class VendorSettingsScreen extends StatelessWidget {
   const VendorSettingsScreen({super.key});
@@ -32,8 +34,19 @@ class VendorSettingsScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
-            onPressed: () {
-              // Add logout logic here (clear tokens, return to login)
+            onPressed: () async {
+              // Clear the saved session data
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+
+              if (!context.mounted) return;
+
+              // Navigate back to Login and clear the navigation stack
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
             },
             child: const Text('Log Out', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           )
