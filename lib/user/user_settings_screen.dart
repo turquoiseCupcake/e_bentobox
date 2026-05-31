@@ -1,9 +1,123 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../auth/login_screen.dart';
 
 class UserSettingsScreen extends StatelessWidget {
   const UserSettingsScreen({super.key});
+
+  Future<void> _showChangePasswordDialog(BuildContext context) async {
+    final oldPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('Change Password', style: TextStyle(fontWeight: FontWeight.bold)),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: oldPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Old Password'),
+                    validator: (v) => v!.isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: newPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'New Password'),
+                    validator: (v) => v!.isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: confirmPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Confirm New Password'),
+                    validator: (v) {
+                      if (v!.isEmpty) return 'Required';
+                      if (v != newPasswordController.text) return 'Passwords do not match';
+                      return null;
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.pop(context), 
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey))
+              ),
+              isLoading
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)),
+                    )
+                  : ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () async {
+                        if (!formKey.currentState!.validate()) return;
+                        setState(() => isLoading = true);
+                        
+                        try {
+                          final prefs = await SharedPreferences.getInstance();
+                          final userId = prefs.getString('userId');
+                          final role = prefs.getString('userRole');
+                          final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
+
+                          final response = await http.put(
+                            Uri.parse('$baseUrl/api/change-password'),
+                            headers: {'Content-Type': 'application/json'},
+                            body: jsonEncode({
+                              'userId': userId,
+                              'role': role,
+                              'oldPassword': oldPasswordController.text,
+                              'newPassword': newPasswordController.text,
+                            }),
+                          );
+                          
+                          final data = jsonDecode(response.body);
+                          if (response.statusCode == 200 && data['success']) {
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password updated successfully!'), backgroundColor: Colors.green));
+                            }
+                          } else {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['message']), backgroundColor: Colors.red));
+                            }
+                          }
+                        } catch (e) {
+                           if (context.mounted) {
+                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error connecting to server.'), backgroundColor: Colors.red));
+                           }
+                        } finally {
+                          if (context.mounted) setState(() => isLoading = false);
+                        }
+                      },
+                      child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+            ],
+          );
+        });
+      }
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,10 +136,8 @@ class UserSettingsScreen extends StatelessWidget {
         children: [
           _buildProfileHeader(),
           const SizedBox(height: 24),
-          _buildSettingsTile(Icons.notifications_outlined, 'Push Notifications', true),
-          _buildSettingsTile(Icons.dark_mode_outlined, 'Dark Mode', false),
-          _buildSettingsTile(Icons.security, 'Change Password', false),
-          _buildSettingsTile(Icons.help_outline, 'Help & Support', false),
+          
+          _buildSettingsTile(Icons.security, 'Change Password', false, () => _showChangePasswordDialog(context)),
           const SizedBox(height: 40),
           
           ElevatedButton(
@@ -37,13 +149,11 @@ class UserSettingsScreen extends StatelessWidget {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
             onPressed: () async {
-              // Clear the saved session data
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
 
               if (!context.mounted) return;
 
-              // Navigate back to Login and clear the navigation stack
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -78,7 +188,7 @@ class UserSettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSettingsTile(IconData icon, String title, bool hasSwitch) {
+  Widget _buildSettingsTile(IconData icon, String title, bool hasSwitch, VoidCallback onTap) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -92,7 +202,7 @@ class UserSettingsScreen extends StatelessWidget {
         trailing: hasSwitch 
             ? Switch(value: true, onChanged: (val) {}, activeColor: Colors.orange)
             : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-        onTap: () {},
+        onTap: onTap,
       ),
     );
   }

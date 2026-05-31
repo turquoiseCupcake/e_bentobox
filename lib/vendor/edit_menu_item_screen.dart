@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // Add this import
 
 class EditMenuItemScreen extends StatefulWidget {
   final Map<String, dynamic> item; // Receive the item data from the menu screen
@@ -34,7 +35,7 @@ class _EditMenuItemScreenState extends State<EditMenuItemScreen> {
   @override
   void initState() {
     super.initState();
-    _baseUrl = dotenv.env['API_BASE_URL'] ?? '';
+    _baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
     
     // Pre-fill existing data
     _nameController = TextEditingController(text: widget.item['name']);
@@ -130,12 +131,28 @@ class _EditMenuItemScreenState extends State<EditMenuItemScreen> {
     setState(() => _isLoading = true);
     try {
       final response = await http.delete(Uri.parse('$_baseUrl/api/menu-items/${widget.item['id']}'));
-      if (response.statusCode == 200 && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item Deleted')));
-        Navigator.pop(context);
+      final data = jsonDecode(response.body); // Decode the response body!
+
+      if (response.statusCode == 200 && data['success']) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item Deleted'), backgroundColor: Colors.green));
+          Navigator.pop(context);
+        }
+      } else {
+        // If the server sends back a 400 error (like our new foreign key warning), throw it
+        throw Exception(data['message'] ?? 'Delete failed.');
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Delete failed.'), backgroundColor: Colors.red));
+      if (mounted) {
+        // Display the specific error message from the backend!
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')), 
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4), // Give them time to read it
+          )
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -178,15 +195,21 @@ class _EditMenuItemScreenState extends State<EditMenuItemScreen> {
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: Colors.grey.shade300),
-                            image: _newImageFile != null
-                                ? DecorationImage(image: FileImage(_newImageFile!), fit: BoxFit.cover)
-                                : (_currentImageUrl.isNotEmpty
-                                    ? DecorationImage(image: NetworkImage('$_baseUrl$_currentImageUrl'), fit: BoxFit.cover)
-                                    : null),
+                            // Remove the old 'image: ...' property from here
                           ),
-                          child: _newImageFile == null && _currentImageUrl.isEmpty
-                              ? const Icon(Icons.camera_alt, size: 40, color: Colors.grey)
-                              : null,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: _newImageFile != null
+                                ? Image.file(_newImageFile!, fit: BoxFit.cover)
+                                : (_currentImageUrl.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        imageUrl: '$_baseUrl$_currentImageUrl',
+                                        fit: BoxFit.cover,
+                                        placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                        errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.grey, size: 40),
+                                      )
+                                    : const Icon(Icons.camera_alt, size: 40, color: Colors.grey)),
+                          ),
                         ),
                       ),
                     ),

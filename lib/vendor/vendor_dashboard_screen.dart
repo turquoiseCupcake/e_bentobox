@@ -29,13 +29,10 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
   void initState() {
     super.initState();
     _baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
-    
-    // Automatically select tomorrow's date by default
     _selectedDate = DateTime.now().add(const Duration(days: 1));
     _fetchOrders();
   }
 
-  // --- API CALL: FETCH ORDERS ---
   Future<void> _fetchOrders() async {
     setState(() => _isLoading = true);
     try {
@@ -59,28 +56,27 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Error fetching orders: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to fetch orders')));
-      }
+      print('Error fetching orders: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- API CALL: UPDATE STATUS ---
-  Future<void> _updateStatus(int index, String newStatus) async {
+  // UPDATED: Now accepts an optional qrData parameter
+  Future<void> _updateStatus(int index, String newStatus, [String? qrData]) async {
     final orderId = _incomingOrders[index]['id'];
     
     setState(() {
       _incomingOrders[index]['status'] = newStatus;
+      if (qrData != null) _incomingOrders[index]['qr_sticker_id'] = qrData;
     });
 
     try {
       final response = await http.put(
         Uri.parse('$_baseUrl/api/orders/$orderId/status'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': newStatus}),
+        // Send the QR data to the backend!
+        body: jsonEncode({'status': newStatus, 'qr_sticker_id': qrData}), 
       );
 
       final data = jsonDecode(response.body);
@@ -88,7 +84,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
         throw Exception('Backend rejected status update');
       }
     } catch (e) {
-      debugPrint('Status update failed: $e');
+      print('Status update failed: $e');
       _fetchOrders(); 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to update status'), backgroundColor: Colors.red));
@@ -96,12 +92,10 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
     }
   }
 
-  // --- PDF QR CODE GENERATOR ---
   Future<void> _generateAndPrintQrCodes() async {
     final doc = pw.Document();
     const uuid = Uuid();
 
-    // Generate 24 unique IDs for a single A4 sticker sheet
     final List<String> qrDataList = List.generate(24, (index) => uuid.v4());
 
     doc.addPage(
@@ -121,7 +115,6 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
               )
             ),
             pw.SizedBox(height: 20),
-            // Use Wrap to create a grid of QR codes
             pw.Wrap(
               spacing: 20,
               runSpacing: 20,
@@ -136,18 +129,9 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                   child: pw.Column(
                     mainAxisAlignment: pw.MainAxisAlignment.center,
                     children: [
-                      pw.BarcodeWidget(
-                        data: data,
-                        width: 80,
-                        height: 80,
-                        barcode: pw.Barcode.qrCode(),
-                        drawText: false,
-                      ),
+                      pw.BarcodeWidget(data: data, width: 80, height: 80, barcode: pw.Barcode.qrCode(), drawText: false),
                       pw.SizedBox(height: 8),
-                      pw.Text(
-                        data.substring(0, 8).toUpperCase(), // Show a short hash below it
-                        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
-                      ),
+                      pw.Text(data.substring(0, 8).toUpperCase(), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
                       pw.Text('Bento Box ID', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
                     ],
                   ),
@@ -159,7 +143,6 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
       ),
     );
 
-    // This opens the native Android/iOS print and save dialog!
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => doc.save(),
       name: 'E-Bentobox_QR_Stickers_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf',
@@ -181,7 +164,6 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
           ],
         ),
         actions: [
-          // NEW: Print/Download QR Codes Button
           IconButton(
             icon: Icon(Icons.print_outlined, color: primaryColor),
             tooltip: 'Generate QR Stickers',
@@ -190,7 +172,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: CircleAvatar(
-              backgroundColor: primaryColor.withValues(alpha: 0.1),
+              backgroundColor: primaryColor.withOpacity(0.1),
               child: Icon(Icons.notifications_none, color: primaryColor),
             ),
           )
@@ -199,7 +181,6 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- HORIZONTAL CALENDAR SCROLL ---
           const SizedBox(height: 8),
           SizedBox(
             height: 90,
@@ -267,21 +248,15 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: isSelected ? primaryColor : Colors.grey.shade200, width: 1.5),
                       boxShadow: isSelected
-                          ? [BoxShadow(color: primaryColor.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))]
-                          : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 4, offset: const Offset(0, 2))],
+                          ? [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]
+                          : [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          DateFormat('EEE').format(date).toUpperCase(),
-                          style: TextStyle(color: isSelected ? Colors.white70 : Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 11),
-                        ),
+                        Text(DateFormat('EEE').format(date).toUpperCase(), style: TextStyle(color: isSelected ? Colors.white70 : Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 11)),
                         const SizedBox(height: 4),
-                        Text(
-                          '${date.day}',
-                          style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 20),
-                        ),
+                        Text('${date.day}', style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 20)),
                       ],
                     ),
                   ),
@@ -295,20 +270,13 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Orders for ${DateFormat('MMMM d').format(_selectedDate)}',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
-                ),
+                Text('Orders for ${DateFormat('MMMM d').format(_selectedDate)}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800)),
                 if (!_isLoading)
-                  Text(
-                    '${_incomingOrders.length} Items',
-                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-                  ),
+                  Text('${_incomingOrders.length} Items', style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
               ],
             ),
           ),
 
-          // --- REAL ORDERS LIST ---
           Expanded(
             child: _isLoading 
                 ? Center(child: CircularProgressIndicator(color: primaryColor))
@@ -334,6 +302,10 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                             final order = _incomingOrders[index];
                             final isPending = order['status'] == 'Pending';
                             final double totalAmount = double.tryParse(order['total'].toString()) ?? 0.0;
+                            
+                            // Parse the saved QR code ID
+                            final String? qrId = order['qr_sticker_id'];
+                            final String displayQr = (qrId != null && qrId.length >= 8) ? qrId.substring(0, 8).toUpperCase() : '';
 
                             return Container(
                               margin: const EdgeInsets.only(bottom: 16),
@@ -341,7 +313,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(20),
-                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -364,9 +336,41 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                           ),
                                         ),
                                       ),
-                                      Text(
-                                        '₱${totalAmount.toStringAsFixed(2)}',
-                                        style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+                                      Row(
+                                        children: [
+                                          Text('₱${totalAmount.toStringAsFixed(2)}', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 18)),
+                                          
+                                          // NEW: 3-Dot Menu to reassign QR code (Only shows if a QR is already assigned)
+                                          if (qrId != null && order['status'] != 'Claimed')
+                                            PopupMenuButton<String>(
+                                              icon: Icon(Icons.more_vert, color: Colors.grey.shade500),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                              onSelected: (value) async {
+                                                if (value == 'reassign') {
+                                                  final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => const QRScannerScreen()));
+                                                  if (result != null && context.mounted) {
+                                                    // Pass the existing status, but give it the NEW qr code string!
+                                                    _updateStatus(index, order['status'], result);
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      const SnackBar(content: Text('QR Code Reassigned Successfully!'), backgroundColor: Colors.green),
+                                                    );
+                                                  }
+                                                }
+                                              },
+                                              itemBuilder: (context) => [
+                                                const PopupMenuItem(
+                                                  value: 'reassign',
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.qr_code_scanner, size: 20, color: Colors.orange),
+                                                      SizedBox(width: 12),
+                                                      Text('Reassign QR Code', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                        ],
                                       ),
                                     ],
                                   ),
@@ -374,6 +378,20 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                   Text(order['customer'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                   const SizedBox(height: 4),
                                   Text(order['items'], style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+                                  
+                                  // NEW: Display the Assigned QR Code!
+                                  if (qrId != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.qr_code_2, size: 16, color: Colors.grey.shade500),
+                                          const SizedBox(width: 4),
+                                          Text('Box ID: $displayQr', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold, fontSize: 12)),
+                                        ],
+                                      ),
+                                    ),
+
                                   const SizedBox(height: 16),
                                   
                                   if (isPending)
@@ -407,7 +425,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                       width: double.infinity,
                                       child: ElevatedButton.icon(
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: primaryColor.withValues(alpha: 0.1), foregroundColor: primaryColor, elevation: 0,
+                                          backgroundColor: primaryColor.withOpacity(0.1), foregroundColor: primaryColor, elevation: 0,
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12),
                                         ),
                                         icon: const Icon(Icons.qr_code_scanner),
@@ -415,7 +433,8 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                         onPressed: () async {
                                           final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => const QRScannerScreen()));
                                           if (result != null && context.mounted) {
-                                            _updateStatus(index, 'Ready');
+                                            // Pass the scanned QR string to the backend!
+                                            _updateStatus(index, 'Ready', result);
                                           }
                                         },
                                       ),

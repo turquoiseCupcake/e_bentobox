@@ -67,6 +67,25 @@ class BentoCartProvider extends ChangeNotifier {
     _reservationDate = null;
     notifyListeners();
   }
+
+  // --- NEW FEATURES ---
+
+  // 1. Remove a specific item by its index
+  void removeItem(int index) {
+    _cartItems.removeAt(index);
+    // Automatically clear the date if the cart becomes completely empty
+    if (_cartItems.isEmpty) {
+      _reservationDate = null;
+    }
+    notifyListeners();
+  }
+
+  // 2. Check if any item in the cart has become unavailable
+  bool get hasUnavailableItems {
+    return _cartItems.any((item) => 
+        item['is_available'] == false || 
+        item['is_available_tomorrow'] == false);
+  }
 }
 
 // ==========================================

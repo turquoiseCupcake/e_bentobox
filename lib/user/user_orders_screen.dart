@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../shared/qr_scanner_screen.dart';
-import 'vendor_map_screen.dart'; // Import to use the full map screen
+import 'vendor_map_screen.dart'; 
 
 class UserOrdersScreen extends StatefulWidget {
   const UserOrdersScreen({super.key});
@@ -31,7 +31,6 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     _fetchMyOrders();
   }
 
-  // --- API CALL: FETCH STUDENT ORDERS ---
   Future<void> _fetchMyOrders() async {
     setState(() => _isLoading = true);
     try {
@@ -40,7 +39,6 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
 
       if (userId == null) throw Exception('Not logged in');
 
-      // Format date for PostgreSQL (YYYY-MM-DD)
       final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
 
       final response = await http.get(
@@ -65,17 +63,14 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     }
   }
 
-  // --- API CALL: CLAIM ORDER ---
   Future<void> _claimOrder(int index) async {
     final orderId = _myOrders[index]['id'];
     
-    // Optimistic UI Update
     setState(() {
       _myOrders[index]['status'] = 'Claimed';
     });
 
     try {
-      // We reuse the same status update endpoint the vendor uses!
       final response = await http.put(
         Uri.parse('$_baseUrl/api/orders/$orderId/status'),
         headers: {'Content-Type': 'application/json'},
@@ -94,7 +89,6 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       }
     } catch (e) {
       print('Status update failed: $e');
-      // Rollback UI if it failed
       _fetchMyOrders(); 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to claim order'), backgroundColor: Colors.red));
@@ -244,21 +238,22 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                           itemBuilder: (context, index) {
                             final order = _myOrders[index];
                             final status = order['status'];
-                            final isReady = status == 'Ready';
+                            final isReady = status == 'Ready' || status == 'Ready for Pickup';
                             final isClaimed = status == 'Claimed';
                             
-                            // Visual color coding based on status
                             Color statusColor = Colors.orange;
                             if (isReady) statusColor = Colors.green;
                             if (isClaimed) statusColor = Colors.teal;
                             if (status == 'Rejected') statusColor = Colors.red;
 
                             final double totalAmount = double.tryParse(order['total'].toString()) ?? 0.0;
-
-                            // Safely parse coordinates if they exist
                             final double? lat = order['vendor_latitude'] != null ? double.tryParse(order['vendor_latitude'].toString()) : null;
                             final double? lng = order['vendor_longitude'] != null ? double.tryParse(order['vendor_longitude'].toString()) : null;
                             final bool hasLocation = lat != null && lng != null;
+
+                            // Parse the saved QR code ID
+                            final String? qrId = order['qr_sticker_id'];
+                            final String displayQr = (qrId != null && qrId.length >= 8) ? qrId.substring(0, 8).toUpperCase() : '';
 
                             return Card(
                               margin: const EdgeInsets.only(bottom: 16),
@@ -306,6 +301,19 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                               Text(order['vendor_name'] ?? 'Carenderia', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                                               const SizedBox(height: 4),
                                               Text(order['items'] ?? '', style: const TextStyle(color: Colors.black54)),
+                                              
+                                              // NEW: Display Expected QR Code
+                                              if (qrId != null && !isClaimed)
+                                                Padding(
+                                                  padding: const EdgeInsets.only(top: 8.0),
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.qr_code_2, size: 16, color: Colors.grey.shade500),
+                                                      const SizedBox(width: 4),
+                                                      Text('Expected Box ID: $displayQr', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold, fontSize: 12)),
+                                                    ],
+                                                  ),
+                                                ),
                                               const SizedBox(height: 16),
                                             ],
                                           ),
@@ -314,7 +322,6 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                           const SizedBox(width: 12),
                                           GestureDetector(
                                             onTap: () {
-                                              // We construct a temporary vendor object to pass to the Map Screen
                                               Navigator.push(
                                                 context,
                                                 MaterialPageRoute(
@@ -323,8 +330,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                                       'store_name': order['vendor_name'],
                                                       'latitude': lat,
                                                       'longitude': lng,
-                                                      'location_description': order['location_description'] // Might be null, map screen handles it
-                                                    }
+                                                      'location_description': order['location_description'],
+                                                    },
                                                   ),
                                                 ),
                                               );
@@ -341,7 +348,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                               ),
                                               child: ClipRRect(
                                                 borderRadius: BorderRadius.circular(12),
-                                                child: IgnorePointer( // Prevents map from swallowing scroll gestures
+                                                child: IgnorePointer( 
                                                   child: FlutterMap(
                                                     options: MapOptions(
                                                       initialCenter: LatLng(lat, lng),
@@ -392,9 +399,20 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                               context,
                                               MaterialPageRoute(builder: (context) => const QRScannerScreen()),
                                             );
-                                            // Once they scan the box, we mark the order as successfully claimed!
+                                            
+                                            // --- SECURITY UPDATE: CHECK IF QR MATCHES ---
                                             if (result != null && context.mounted) {
-                                              _claimOrder(index);
+                                              if (result == qrId) {
+                                                _claimOrder(index); // It's a match! Claim it.
+                                              } else {
+                                                // Invalid code!
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text('Error: Incorrect Bento Box!'),
+                                                    backgroundColor: Colors.red,
+                                                  ),
+                                                );
+                                              }
                                             }
                                           },
                                         ),

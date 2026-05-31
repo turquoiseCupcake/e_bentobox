@@ -68,9 +68,50 @@ class CartScreen extends StatelessWidget {
                     itemCount: cartItems.length,
                     itemBuilder: (context, index) {
                       final item = cartItems[index];
-                      return ListTile(
-                        title: Text(item['name'], style: const TextStyle(fontWeight: FontWeight.w600)),
-                        trailing: Text('₱${item['price'].toStringAsFixed(2)}', style: const TextStyle(fontSize: 16)),
+                      
+                      // Check if item is still available
+                      final bool isAvailable = item['is_available'] ?? true;
+                      final bool isAvailableTomorrow = item['is_available_tomorrow'] ?? true;
+                      final bool canOrder = isAvailable && isAvailableTomorrow;
+
+                      return Dismissible(
+                        key: UniqueKey(), // Allows swipe-to-delete
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          color: Colors.red,
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 20),
+                          child: const Icon(Icons.delete, color: Colors.white),
+                        ),
+                        onDismissed: (direction) {
+                          context.read<BentoCartProvider>().removeItem(index);
+                        },
+                        child: ListTile(
+                          title: Text(
+                            item['name'], 
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              decoration: canOrder ? TextDecoration.none : TextDecoration.lineThrough,
+                              color: canOrder ? Colors.black87 : Colors.grey,
+                            )
+                          ),
+                          subtitle: canOrder 
+                              ? null 
+                              : const Text('This item is no longer available', style: TextStyle(color: Colors.red, fontSize: 12)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('₱${item['price'].toStringAsFixed(2)}', style: TextStyle(fontSize: 16, color: canOrder ? Colors.black87 : Colors.grey)),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                tooltip: 'Remove item',
+                                onPressed: () {
+                                  context.read<BentoCartProvider>().removeItem(index);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -101,11 +142,11 @@ class CartScreen extends StatelessWidget {
                           height: 50,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange,
+                              backgroundColor: cartProvider.hasUnavailableItems ? Colors.red : Colors.orange,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            onPressed: selectedDate == null 
-                                ? null // Disable button if no date selected
+                            onPressed: (selectedDate == null || cartProvider.hasUnavailableItems) 
+                                ? null // Disable button if no date selected OR if an item is unavailable
                                 : () {
                                     // Navigate to the real Mock Payment Screen
                                     Navigator.push(
@@ -113,7 +154,12 @@ class CartScreen extends StatelessWidget {
                                       MaterialPageRoute(builder: (context) => const PaymentScreen()),
                                     );
                                   },
-                            child: const Text('Proceed to Checkout', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                            child: Text(
+                              cartProvider.hasUnavailableItems 
+                                  ? 'Remove unavailable items' 
+                                  : 'Proceed to Checkout', 
+                              style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)
+                            ),
                           ),
                         ),
                       ],
