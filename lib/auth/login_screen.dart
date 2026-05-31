@@ -97,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.bento, size: 80, color: primaryColor),
+                Image.asset('assets/app_icon.png', width: 80, height: 80),
                 const SizedBox(height: 16),
                 Text('E-Bentobox', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: primaryColor)),
                 const SizedBox(height: 32),
