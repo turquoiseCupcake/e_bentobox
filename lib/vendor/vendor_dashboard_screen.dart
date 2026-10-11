@@ -273,7 +273,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                   const SizedBox(height: 6),
                   Text(
                     '• Issues 1 penalty strike to ${order['customer']}.\n'
-                    '• Suspends student account from advance meal reservations.\n'
+                    '• Suspends customer account from advance meal reservations.\n'
                     '• Permanent anti-abandonment record.',
                     style: TextStyle(fontSize: 12, color: Colors.red.shade900, height: 1.3),
                   ),
@@ -611,59 +611,65 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      _isViewingBacklog
-                          ? 'Unresolved Backlog'
-                          : (_selectedDate.day == DateTime.now().day && _selectedDate.month == DateTime.now().month && _selectedDate.year == DateTime.now().year
-                              ? 'Today\'s Orders'
-                              : 'Orders for ${DateFormat('MMMM d').format(_selectedDate)}'),
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
-                    ),
-                    if (_isViewingBacklog) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
                         child: Text(
-                          'All Past Dates',
-                          style: TextStyle(color: Colors.orange.shade900, fontSize: 10, fontWeight: FontWeight.bold),
+                          _isViewingBacklog
+                              ? 'Unresolved Backlog'
+                              : (_selectedDate.day == DateTime.now().day && _selectedDate.month == DateTime.now().month && _selectedDate.year == DateTime.now().year
+                                  ? 'Today\'s Orders'
+                                  : 'Orders for ${DateFormat('MMMM d').format(_selectedDate)}'),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ] else if (_selectedDate.day != DateTime.now().day || _selectedDate.month != DateTime.now().month || _selectedDate.year != DateTime.now().year) ...[
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedDate = DateTime.now();
-                          });
-                          _fetchOrders();
-                          _scrollToSelectedDate();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      if (_isViewingBacklog) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: primaryColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: primaryColor.withValues(alpha: 0.3)),
+                            color: Colors.orange.shade100,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.today, size: 12, color: primaryColor),
-                              const SizedBox(width: 4),
-                              Text('Jump to Today', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 10)),
-                            ],
+                          child: Text(
+                            'All Past Dates',
+                            style: TextStyle(color: Colors.orange.shade900, fontSize: 10, fontWeight: FontWeight.bold),
                           ),
                         ),
-                      ),
+                      ] else if (_selectedDate.day != DateTime.now().day || _selectedDate.month != DateTime.now().month || _selectedDate.year != DateTime.now().year) ...[
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedDate = DateTime.now();
+                            });
+                            _fetchOrders();
+                            _scrollToSelectedDate();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: primaryColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: primaryColor.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.today, size: 12, color: primaryColor),
+                                const SizedBox(width: 4),
+                                Text('Jump to Today', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 10)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 if (!_isLoading)
                   Text('${_filteredOrders.length} Items', style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
               ],
@@ -776,66 +782,79 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Row(
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                                decoration: BoxDecoration(
-                                                  color: isPending
-                                                      ? Colors.orange.shade50
-                                                      : (isRejected || isNoShow ? Colors.red.shade50 : Colors.green.shade50),
-                                                  borderRadius: BorderRadius.circular(20),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    if (isNoShow) ...[
-                                                      Icon(Icons.report_problem_rounded, size: 13, color: Colors.red.shade800),
-                                                      const SizedBox(width: 4),
-                                                    ],
-                                                    Text(
-                                                      order['status'],
-                                                      style: TextStyle(
-                                                        color: isPending
-                                                            ? Colors.orange.shade800
-                                                            : (isRejected || isNoShow ? Colors.red.shade800 : Colors.green.shade800),
-                                                        fontWeight: FontWeight.bold,
-                                                        fontSize: 12,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              if (order['days_overdue'] != null && (order['days_overdue'] as num) > 0) ...[
-                                                const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Wrap(
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              spacing: 6,
+                                              runSpacing: 6,
+                                              children: [
                                                 Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                                   decoration: BoxDecoration(
-                                                    color: Colors.red.shade50,
-                                                    borderRadius: BorderRadius.circular(10),
-                                                    border: Border.all(color: Colors.red.shade200),
+                                                    color: isPending
+                                                        ? Colors.orange.shade50
+                                                        : (isRejected || isNoShow ? Colors.red.shade50 : Colors.green.shade50),
+                                                    borderRadius: BorderRadius.circular(20),
                                                   ),
-                                                  child: Text(
-                                                    '${order['days_overdue']}d Overdue • ${order['formatted_date'] ?? order['reservation_date']}',
-                                                    style: TextStyle(
-                                                      color: Colors.red.shade800,
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 10,
-                                                    ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      if (isNoShow) ...[
+                                                        Icon(Icons.report_problem_rounded, size: 13, color: Colors.red.shade800),
+                                                        const SizedBox(width: 4),
+                                                      ],
+                                                      Text(
+                                                        order['status'],
+                                                        style: TextStyle(
+                                                          color: isPending
+                                                              ? Colors.orange.shade800
+                                                              : (isRejected || isNoShow ? Colors.red.shade800 : Colors.green.shade800),
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
                                                 ),
+                                                if (order['days_overdue'] != null && (order['days_overdue'] as num) > 0)
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.red.shade50,
+                                                      borderRadius: BorderRadius.circular(10),
+                                                      border: Border.all(color: Colors.red.shade200),
+                                                    ),
+                                                    child: Text(
+                                                      '${order['days_overdue']}d Overdue • ${order['formatted_date'] ?? order['reservation_date']}',
+                                                      style: TextStyle(
+                                                        color: Colors.red.shade800,
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 10,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
                                               ],
-                                            ],
+                                            ),
                                           ),
+                                          const SizedBox(width: 8),
                                           Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment: CrossAxisAlignment.center,
                                             children: [
-                                              Text('₱${totalAmount.toStringAsFixed(2)}', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 18)),
+                                              Text(
+                                                '₱${totalAmount.toStringAsFixed(2)}',
+                                                style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+                                              ),
                                               
                                               // 3-Dot Action Menu (QR Reassignment and No-Show Reporting)
                                               if (!isClaimed && !isNoShow && !isRejected)
                                                 PopupMenuButton<String>(
+                                                  padding: EdgeInsets.zero,
+                                                  constraints: const BoxConstraints(),
                                                   icon: Icon(Icons.more_vert, color: Colors.grey.shade500),
                                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                                   onSelected: (value) async {
@@ -947,7 +966,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                             children: [
                                               Icon(Icons.qr_code_2, size: 16, color: Colors.grey.shade500),
                                               const SizedBox(width: 4),
-                                              Text('Box ID: $displayQr', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold, fontSize: 12)),
+                                              Flexible(child: Text('Box ID: $displayQr', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold, fontSize: 12), overflow: TextOverflow.ellipsis)),
                                             ],
                                           ),
                                         ),
@@ -1018,10 +1037,10 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                                   foregroundColor: Colors.white,
                                                   elevation: 0,
                                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                                                 ),
-                                                icon: const Icon(Icons.check_circle_outline_rounded),
-                                                label: const Text('Complete Order', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                                                label: const Text('Complete Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
                                                 onPressed: () => _updateStatus(order['id'], 'Claimed'),
                                               ),
                                             ),
@@ -1033,10 +1052,10 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                                   foregroundColor: Colors.red.shade700,
                                                   side: BorderSide(color: Colors.red.shade300),
                                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
                                                 ),
-                                                icon: const Icon(Icons.person_off_outlined, size: 18),
-                                                label: const Text('No-Show', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                icon: const Icon(Icons.person_off_outlined, size: 16),
+                                                label: const Text('No-Show', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
                                                 onPressed: () => _confirmAndReportNoShow(order),
                                               ),
                                             ),
@@ -1057,7 +1076,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                               const SizedBox(width: 10),
                                               Expanded(
                                                 child: Text(
-                                                  'Marked as No-Show. 1 penalty strike has been issued and student account is suspended.',
+                                                  'Marked as No-Show. 1 penalty strike has been issued and customer account is suspended.',
                                                   style: TextStyle(color: Colors.red.shade900, fontSize: 12, fontWeight: FontWeight.w600),
                                                 ),
                                               ),

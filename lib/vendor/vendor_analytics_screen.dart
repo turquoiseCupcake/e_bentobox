@@ -264,7 +264,7 @@ class _VendorAnalyticsScreenState extends State<VendorAnalyticsScreen> {
                     value: currencyFormat.format(avgOrderValue),
                     icon: Icons.analytics_outlined,
                     color: Colors.teal.shade600,
-                    subtitle: 'Per student meal',
+                    subtitle: 'Per customer meal',
                   ),
                 ),
               ],
@@ -442,10 +442,14 @@ class _VendorAnalyticsScreenState extends State<VendorAnalyticsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Daily Revenue (Peak: ${currencyFormat.format(maxRevenue)})',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+              Expanded(
+                child: Text(
+                  'Daily Revenue (Peak: ${currencyFormat.format(maxRevenue)})',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+              const SizedBox(width: 8),
               Text(
                 '${trend.length} Days Tracked',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
@@ -719,7 +723,7 @@ class _VendorAnalyticsScreenState extends State<VendorAnalyticsScreen> {
       child: Column(
         children: List.generate(sales.length, (index) {
           final order = sales[index];
-          final String customer = order['customer_name'] ?? 'Student Diner';
+          final String customer = order['customer_name'] ?? 'Customer Diner';
           final String date = order['formatted_date'] ?? '';
           final String items = order['items_summary'] ?? 'Bento items';
           final double total = double.tryParse(order['total_amount'].toString()) ?? 0.0;

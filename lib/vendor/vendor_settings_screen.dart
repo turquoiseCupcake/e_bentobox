@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:intl/intl.dart';
 import '../auth/login_screen.dart';
 import 'vendor_edit_profile_screen.dart';
 
@@ -19,6 +20,8 @@ class _VendorSettingsScreenState extends State<VendorSettingsScreen> {
   String _operatingHours = 'Mon-Fri 8AM-7PM';
   bool _orderChime = true;
   bool _autoPrintHints = true;
+  bool _isStoreActive = true;
+  DateTime? _effectiveOpeningDate;
   String? _vendorId;
   Map<String, dynamic> _vendorData = {};
 
@@ -56,6 +59,14 @@ class _VendorSettingsScreenState extends State<VendorSettingsScreen> {
       _vendorEmail = prefs.getString('userEmail') ?? 'vendor@carenderia.com';
       _orderChime = prefs.getBool('vendor_order_chime') ?? true;
       _autoPrintHints = prefs.getBool('vendor_print_hints') ?? true;
+      _isStoreActive = prefs.getBool('vendor_is_active') ?? true;
+      _operatingHours = prefs.getString('vendor_operating_hours') ?? _operatingHours;
+      final effectiveDateStr = prefs.getString('vendor_effective_date');
+      if (effectiveDateStr != null) {
+        try {
+          _effectiveOpeningDate = DateTime.parse(effectiveDateStr);
+        } catch (_) {}
+      }
     });
 
     // Also fetch fresh operating hours from server if available
@@ -317,12 +328,12 @@ class _VendorSettingsScreenState extends State<VendorSettingsScreen> {
               ),
               SizedBox(height: 8),
               Text(
-                '3. When packing an order, tap "Scan & Mark Ready" and scan the container sticker. This binds the physical box to the digital student order!',
+                '3. When packing an order, tap "Scan & Mark Ready" and scan the container sticker. This binds the physical box to the digital customer order!',
                 style: TextStyle(fontSize: 12.5, color: Colors.black87),
               ),
               SizedBox(height: 8),
               Text(
-                '4. When the student arrives, they scan that sticker to confirm pickup.',
+                '4. When the customer arrives, they scan that sticker to confirm pickup.',
                 style: TextStyle(fontSize: 12.5, color: Colors.black87),
               ),
             ],
@@ -377,18 +388,32 @@ class _VendorSettingsScreenState extends State<VendorSettingsScreen> {
             ),
             _buildSettingsTile(
               icon: Icons.access_time_rounded,
-              title: 'Operating Hours',
+              title: 'Operating Hours & Schedule',
               subtitle: _operatingHours,
-              trailing: const Text('Active', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => VendorEditProfileScreen(vendorData: _getResolvedVendorData()),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _isStoreActive ? Colors.green.shade50 : Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _isStoreActive ? Colors.green.shade300 : Colors.orange.shade300),
+                    ),
+                    child: Text(
+                      _isStoreActive ? 'Active' : 'Paused',
+                      style: TextStyle(
+                        color: _isStoreActive ? Colors.green.shade800 : Colors.orange.shade800,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
-                );
-                _loadVendorPreferences();
-              },
+                  const SizedBox(width: 8),
+                  const Icon(Icons.edit_calendar_rounded, size: 16, color: primaryColor),
+                ],
+              ),
+              onTap: _showOperatingHoursEditor,
             ),
             _buildSwitchTile(
               icon: Icons.notifications_active_outlined,
@@ -613,6 +638,556 @@ class _VendorSettingsScreenState extends State<VendorSettingsScreen> {
       activeThumbColor: primaryColor,
       value: value,
       onChanged: onChanged,
+    );
+  }
+
+  // --- VENDOR OPERATING HOURS & SCHEDULE INTERACTIVE EDITOR ---
+  String _formatTimeOfDay(TimeOfDay time) {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
+  void _showOperatingHoursEditor() {
+    TimeOfDay tempOpen = const TimeOfDay(hour: 7, minute: 0);
+    TimeOfDay tempClose = const TimeOfDay(hour: 17, minute: 0);
+    Set<String> selectedDays = {'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'};
+    bool tempIsActive = _isStoreActive;
+    DateTime? tempDate = _effectiveOpeningDate ?? DateTime.now();
+    bool isSaving = false;
+
+    if (_operatingHours.contains('Mon-Fri')) {
+      selectedDays = {'Mon', 'Tue', 'Wed', 'Thu', 'Fri'};
+    } else if (_operatingHours.contains('Daily') || _operatingHours.contains('Mon-Sun')) {
+      selectedDays = {'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'};
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            String formatSchedule() {
+              String daysLabel;
+              if (selectedDays.length == 7) {
+                daysLabel = 'Daily';
+              } else if (selectedDays.containsAll({'Mon', 'Tue', 'Wed', 'Thu', 'Fri'}) && selectedDays.length == 5) {
+                daysLabel = 'Mon-Fri';
+              } else if (selectedDays.containsAll({'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'}) && selectedDays.length == 6) {
+                daysLabel = 'Mon-Sat';
+              } else if (selectedDays.isEmpty) {
+                daysLabel = 'Custom';
+              } else {
+                const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                final sorted = dayOrder.where((d) => selectedDays.contains(d)).toList();
+                daysLabel = sorted.join(', ');
+              }
+
+              final timeStr = '${_formatTimeOfDay(tempOpen)} - ${_formatTimeOfDay(tempClose)}';
+              if (tempDate != null) {
+                return '$daysLabel • $timeStr (From ${DateFormat('MMM d').format(tempDate!)})';
+              }
+              return '$daysLabel • $timeStr';
+            }
+
+            final currentPreview = formatSchedule();
+
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: primaryLight,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.access_time_filled_rounded, color: primaryColor, size: 24),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Operating Hours & Schedule',
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  'Edit opening times, active days, and launch date',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Store Status Switch Tile
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: tempIsActive ? Colors.green.shade50 : Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: tempIsActive ? Colors.green.shade200 : Colors.orange.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              tempIsActive ? Icons.check_circle_rounded : Icons.pause_circle_filled_rounded,
+                              color: tempIsActive ? Colors.green.shade700 : Colors.orange.shade700,
+                              size: 24,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    tempIsActive ? 'Store Status: Open & Active' : 'Store Status: Temporarily Paused',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: tempIsActive ? Colors.green.shade900 : Colors.orange.shade900,
+                                    ),
+                                  ),
+                                  Text(
+                                    tempIsActive ? 'Accepting advance customer bento orders' : 'Orders paused; diners will see store as resting',
+                                    style: TextStyle(fontSize: 11, color: tempIsActive ? Colors.green.shade700 : Colors.orange.shade700),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: tempIsActive,
+                              activeThumbColor: Colors.green.shade700,
+                              activeTrackColor: Colors.green.shade200,
+                              inactiveThumbColor: Colors.orange.shade700,
+                              onChanged: (val) => setSheetState(() => tempIsActive = val),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Interactive Clock Buttons Row (Opens At / Closes At)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: tempOpen,
+                                  helpText: 'SELECT STORE OPENING TIME',
+                                  builder: (context, child) {
+                                    return Theme(
+                                      data: Theme.of(context).copyWith(
+                                        colorScheme: const ColorScheme.light(
+                                          primary: primaryColor,
+                                          onPrimary: Colors.white,
+                                          surface: Colors.white,
+                                          onSurface: Colors.black87,
+                                        ),
+                                      ),
+                                      child: child!,
+                                    );
+                                  },
+                                );
+                                if (picked != null) {
+                                  setSheetState(() => tempOpen = picked);
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: primaryLight.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: primaryColor.withValues(alpha: 0.3), width: 1.5),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.wb_sunny_rounded, size: 16, color: primaryColor),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'OPENS AT',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: primaryColor, letterSpacing: 0.5),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      _formatTimeOfDay(tempOpen),
+                                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.touch_app_rounded, size: 12, color: primaryColor),
+                                        SizedBox(width: 4),
+                                        Text('Tap to edit clock', style: TextStyle(fontSize: 11, color: primaryColor, fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: tempClose,
+                                  helpText: 'SELECT STORE CLOSING TIME',
+                                  builder: (context, child) {
+                                    return Theme(
+                                      data: Theme.of(context).copyWith(
+                                        colorScheme: const ColorScheme.light(
+                                          primary: primaryColor,
+                                          onPrimary: Colors.white,
+                                          surface: Colors.white,
+                                          onSurface: Colors.black87,
+                                        ),
+                                      ),
+                                      child: child!,
+                                    );
+                                  },
+                                );
+                                if (picked != null) {
+                                  setSheetState(() => tempClose = picked);
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: primaryLight.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: primaryColor.withValues(alpha: 0.3), width: 1.5),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.bedtime_outlined, size: 16, color: primaryColor),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'CLOSES AT',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: primaryColor, letterSpacing: 0.5),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      _formatTimeOfDay(tempClose),
+                                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.touch_app_rounded, size: 12, color: primaryColor),
+                                        SizedBox(width: 4),
+                                        Text('Tap to edit clock', style: TextStyle(fontSize: 11, color: primaryColor, fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Operating Days Selector
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('OPERATING DAYS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 0.5)),
+                          Row(
+                            children: [
+                              GestureDetector(
+                                onTap: () => setSheetState(() => selectedDays = {'Mon', 'Tue', 'Wed', 'Thu', 'Fri'}),
+                                child: Text('Mon-Fri', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: selectedDays.length == 5 && !selectedDays.contains('Sat') ? primaryColor : Colors.grey)),
+                              ),
+                              const Text(' • ', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                              GestureDetector(
+                                onTap: () => setSheetState(() => selectedDays = {'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'}),
+                                child: Text('Mon-Sat', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: selectedDays.length == 6 && !selectedDays.contains('Sun') ? primaryColor : Colors.grey)),
+                              ),
+                              const Text(' • ', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                              GestureDetector(
+                                onTap: () => setSheetState(() => selectedDays = {'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'}),
+                                child: Text('Daily', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: selectedDays.length == 7 ? primaryColor : Colors.grey)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) {
+                          final isSelected = selectedDays.contains(day);
+                          return InkWell(
+                            onTap: () {
+                              setSheetState(() {
+                                if (isSelected) {
+                                  if (selectedDays.length > 1) selectedDays.remove(day);
+                                } else {
+                                  selectedDays.add(day);
+                                }
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              width: 42,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected ? primaryColor : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: isSelected ? primaryColor : Colors.grey.shade300),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  day,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                    color: isSelected ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Effective / Opening Date (Interactable Calendar)
+                      const Text('EFFECTIVE / OPENING DATE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 0.5)),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () async {
+                          final pickedDate = await showDatePicker(
+                            context: context,
+                            initialDate: tempDate ?? DateTime.now(),
+                            firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                            helpText: 'SELECT SCHEDULE EFFECTIVE DATE',
+                            builder: (context, child) {
+                              return Theme(
+                                data: Theme.of(context).copyWith(
+                                  colorScheme: const ColorScheme.light(
+                                    primary: primaryColor,
+                                    onPrimary: Colors.white,
+                                    surface: Colors.white,
+                                    onSurface: Colors.black87,
+                                  ),
+                                ),
+                                child: child!,
+                              );
+                            },
+                          );
+                          if (pickedDate != null) {
+                            setSheetState(() => tempDate = pickedDate);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: primaryLight,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.calendar_month_rounded, color: primaryColor, size: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      tempDate != null
+                                          ? DateFormat('EEEE, MMMM d, yyyy').format(tempDate!)
+                                          : 'Starting Today',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                    const Text('Tap to change opening date or seasonal schedule', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.edit_calendar_rounded, size: 18, color: primaryColor),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Live Customer Preview Card
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: primaryLight,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: primaryColor.withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.visibility_outlined, size: 14, color: primaryColor),
+                                SizedBox(width: 6),
+                                Text(
+                                  'CUSTOMER VIEW PREVIEW',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: primaryColor, letterSpacing: 0.5),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              currentPreview,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: primaryColor,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 0,
+                              ),
+                              icon: isSaving
+                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.check_rounded, size: 20),
+                              label: Text(isSaving ? 'Syncing...' : 'Save & Sync Schedule', style: const TextStyle(fontWeight: FontWeight.bold)),
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      setSheetState(() => isSaving = true);
+                                      final newHours = formatSchedule();
+                                      final prefs = await SharedPreferences.getInstance();
+
+                                      await prefs.setString('vendor_operating_hours', newHours);
+                                      await prefs.setBool('vendor_is_active', tempIsActive);
+                                      if (tempDate != null) {
+                                        await prefs.setString('vendor_effective_date', tempDate!.toIso8601String());
+                                      }
+
+                                      // Sync to backend database
+                                      final vendorId = _vendorId ?? prefs.getString('userId');
+                                      if (vendorId != null) {
+                                        try {
+                                          final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://54.254.206.248:3000';
+                                          await http.put(
+                                            Uri.parse('$baseUrl/api/vendors/$vendorId'),
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: jsonEncode({
+                                              ..._vendorData,
+                                              'operating_hours': newHours,
+                                              'is_active': tempIsActive,
+                                            }),
+                                          );
+                                        } catch (_) {}
+                                      }
+
+                                      if (mounted) {
+                                        setState(() {
+                                          _operatingHours = newHours;
+                                          _isStoreActive = tempIsActive;
+                                          _effectiveOpeningDate = tempDate;
+                                        });
+                                      }
+
+                                      if (!ctx.mounted) return;
+                                      Navigator.pop(ctx);
+
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Operating hours updated & synced: $newHours'),
+                                            backgroundColor: Colors.green,
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      }
+                                    },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

@@ -221,13 +221,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
-                                    Icons.school_rounded,
+                                    Icons.person_outline_rounded,
                                     size: 18,
                                     color: !_isVendor ? Colors.white : Colors.grey.shade700,
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    'Student / Diner',
+                                    'Customer / Diner',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 14,
@@ -309,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Text(
                             _isVendor
                                 ? 'Vendor Portal: Manage orders & print QR sheets'
-                                : 'Student Portal: Reserve your bento box for tomorrow',
+                                : 'Customer Portal: Reserve your bento box for tomorrow',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -356,7 +356,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
                             labelText: 'Email Address',
-                            hintText: _isVendor ? 'vendor@carenderia.com' : 'student@nemsu.edu.ph',
+                            hintText: _isVendor ? 'vendor@carenderia.com' : 'customer@email.com',
                             prefixIcon: Icon(Icons.mail_outline_rounded, color: primaryColor),
                             filled: true,
                             fillColor: Colors.grey.shade50,
@@ -457,7 +457,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
                             )
                           : Text(
-                              _isVendor ? 'Log In as Vendor' : 'Log In as Student',
+                              _isVendor ? 'Log In as Vendor' : 'Log In as Customer',
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             ),
                     ),

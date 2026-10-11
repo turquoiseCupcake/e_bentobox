@@ -428,16 +428,20 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      _isViewingBacklog
-                          ? 'Unclaimed Backlog'
-                          : (_selectedDate.day == DateTime.now().day && _selectedDate.month == DateTime.now().month && _selectedDate.year == DateTime.now().year
-                              ? 'Today\'s Reservations'
-                              : 'Orders for ${DateFormat('MMMM d').format(_selectedDate)}'),
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
-                    ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _isViewingBacklog
+                              ? 'Unclaimed Backlog'
+                              : (_selectedDate.day == DateTime.now().day && _selectedDate.month == DateTime.now().month && _selectedDate.year == DateTime.now().year
+                                  ? 'Today\'s Reservations'
+                                  : 'Orders for ${DateFormat('MMMM d').format(_selectedDate)}'),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     if (_isViewingBacklog) ...[
                       const SizedBox(width: 8),
                       Container(
@@ -481,7 +485,9 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     ],
                   ],
                 ),
-                if (!_isLoading)
+              ),
+              const SizedBox(width: 8),
+              if (!_isLoading)
                   Text('${_filteredOrders.length} Items', style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
               ],
             ),
@@ -594,34 +600,39 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              '₱${totalAmount.toStringAsFixed(2)}', 
-                                              style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor, fontSize: 18)
-                                            ),
-                                            if (order['days_overdue'] != null && (order['days_overdue'] as num) > 0) ...[
-                                              const SizedBox(height: 4),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.red.shade50,
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  border: Border.all(color: Colors.red.shade200),
-                                                ),
-                                                child: Text(
-                                                  '${order['days_overdue']}d Overdue • ${order['formatted_date'] ?? order['reservation_date']}',
-                                                  style: TextStyle(
-                                                    color: Colors.red.shade800,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 10,
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                '₱${totalAmount.toStringAsFixed(2)}', 
+                                                style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor, fontSize: 18)
+                                              ),
+                                              if (order['days_overdue'] != null && (order['days_overdue'] as num) > 0) ...[
+                                                const SizedBox(height: 4),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.red.shade50,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    border: Border.all(color: Colors.red.shade200),
+                                                  ),
+                                                  child: Text(
+                                                    '${order['days_overdue']}d Overdue • ${order['formatted_date'] ?? order['reservation_date']}',
+                                                    style: TextStyle(
+                                                      color: Colors.red.shade800,
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 10,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
                                                   ),
                                                 ),
-                                              ),
+                                              ],
                                             ],
-                                          ],
+                                          ),
                                         ),
+                                        const SizedBox(width: 8),
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                           decoration: BoxDecoration(
@@ -649,7 +660,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(order['vendor_name'] ?? 'Carenderia', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                              Text(order['vendor_name'] ?? 'Carenderia', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
                                               const SizedBox(height: 4),
                                               Text(order['items'] ?? '', style: const TextStyle(color: Colors.black54)),
                                               
@@ -661,7 +672,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                                     children: [
                                                       Icon(Icons.qr_code_2, size: 16, color: Colors.grey.shade500),
                                                       const SizedBox(width: 4),
-                                                      Text('Expected Box ID: $displayQr', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold, fontSize: 12)),
+                                                      Flexible(child: Text('Expected Box ID: $displayQr', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold, fontSize: 12), overflow: TextOverflow.ellipsis)),
                                                     ],
                                                   ),
                                                 ),

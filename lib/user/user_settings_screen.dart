@@ -13,12 +13,16 @@ class UserSettingsScreen extends StatefulWidget {
 }
 
 class _UserSettingsScreenState extends State<UserSettingsScreen> {
-  String _userName = 'Juan Student';
-  String _userEmail = 'student@nemsu.edu.ph';
+  String _userName = 'Juan Dela Cruz';
+  String _userEmail = 'customer@email.com';
   bool _notifyOrders = true;
   bool _notifySound = true;
   int _strikeCount = 0;
   bool _isBanned = false;
+
+  // Interactable Lunch Pickup Window State
+  TimeOfDay _lunchStartTime = const TimeOfDay(hour: 11, minute: 30);
+  TimeOfDay _lunchEndTime = const TimeOfDay(hour: 13, minute: 30);
 
   // Invariant 6: Student Warm Orange Theme
   static const Color primaryColor = Colors.orange;
@@ -32,11 +36,18 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
 
   Future<void> _loadUserPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+    final startH = prefs.getInt('pref_lunch_start_hour') ?? 11;
+    final startM = prefs.getInt('pref_lunch_start_minute') ?? 30;
+    final endH = prefs.getInt('pref_lunch_end_hour') ?? 13;
+    final endM = prefs.getInt('pref_lunch_end_minute') ?? 30;
+
     setState(() {
-      _userName = prefs.getString('userName') ?? 'Juan Student';
-      _userEmail = prefs.getString('userEmail') ?? 'student@nemsu.edu.ph';
+      _userName = prefs.getString('userName') ?? 'Juan Dela Cruz';
+      _userEmail = prefs.getString('userEmail') ?? 'customer@email.com';
       _notifyOrders = prefs.getBool('pref_notify_orders') ?? true;
       _notifySound = prefs.getBool('pref_notify_sound') ?? true;
+      _lunchStartTime = TimeOfDay(hour: startH, minute: startM);
+      _lunchEndTime = TimeOfDay(hour: endH, minute: endM);
     });
 
     final String? userId = prefs.getString('userId');
@@ -61,7 +72,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
         }
       }
     } catch (e) {
-      print('Error fetching student account standing: $e');
+      debugPrint('Error fetching customer account standing: $e');
     }
   }
 
@@ -237,7 +248,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Log Out', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to log out of your student account?'),
+        content: const Text('Are you sure you want to log out of your customer account?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -463,10 +474,28 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
             ),
             _buildSettingsTile(
               icon: Icons.schedule_rounded,
-              title: 'Campus Lunch Window',
-              subtitle: 'Standard pickup: 11:30 AM – 1:30 PM',
-              trailing: const Text('NEMSU', style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor, fontSize: 12)),
-              onTap: () {},
+              title: 'Lunch Window',
+              subtitle: 'Daily pickup: ${_formatTimeOfDay(_lunchStartTime)} – ${_formatTimeOfDay(_lunchEndTime)}',
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: primaryLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: primaryColor.withValues(alpha: 0.3)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.edit_calendar_rounded, size: 14, color: primaryColor),
+                    SizedBox(width: 4),
+                    Text(
+                      'Edit',
+                      style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              onTap: _showLunchWindowPicker,
             ),
           ]),
           const SizedBox(height: 24),
@@ -574,7 +603,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: const Text(
-                    'Student / Diner',
+                    'Customer / Diner',
                     style: TextStyle(color: primaryColor, fontSize: 11, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -663,6 +692,374 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
       activeThumbColor: primaryColor,
       value: value,
       onChanged: onChanged,
+    );
+  }
+
+  // --- LUNCH WINDOW INTERACTIVE PICKER & PRESETS ---
+  String _formatTimeOfDay(TimeOfDay time) {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
+  void _showLunchWindowPicker() {
+    TimeOfDay tempStart = _lunchStartTime;
+    TimeOfDay tempEnd = _lunchEndTime;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final startMinutes = tempStart.hour * 60 + tempStart.minute;
+            final endMinutes = tempEnd.hour * 60 + tempEnd.minute;
+            final diff = endMinutes >= startMinutes ? endMinutes - startMinutes : (24 * 60 - startMinutes + endMinutes);
+            final hours = diff ~/ 60;
+            final mins = diff % 60;
+
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: primaryLight,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.schedule_rounded, color: primaryColor, size: 24),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Lunch Pickup Window',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                'Select your preferred hours for advance bento pickup',
+                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Interactive Time Cards Row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final picked = await showTimePicker(
+                                context: context,
+                                initialTime: tempStart,
+                                helpText: 'SELECT PICKUP START TIME',
+                                builder: (context, child) {
+                                  return Theme(
+                                    data: Theme.of(context).copyWith(
+                                      colorScheme: ColorScheme.light(
+                                        primary: primaryColor,
+                                        onPrimary: Colors.white,
+                                        surface: Colors.white,
+                                        onSurface: Colors.grey.shade800,
+                                      ),
+                                    ),
+                                    child: child!,
+                                  );
+                                },
+                              );
+                              if (picked != null) {
+                                setSheetState(() => tempStart = picked);
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: primaryColor.withValues(alpha: 0.3), width: 1.5),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.wb_sunny_rounded, size: 16, color: Colors.orange.shade700),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'START TIME',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orange.shade800,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _formatTimeOfDay(tempStart),
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Row(
+                                    children: [
+                                      Icon(Icons.touch_app_rounded, size: 12, color: primaryColor),
+                                      SizedBox(width: 4),
+                                      Text('Tap to edit clock', style: TextStyle(fontSize: 11, color: primaryColor, fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final picked = await showTimePicker(
+                                context: context,
+                                initialTime: tempEnd,
+                                helpText: 'SELECT PICKUP END TIME',
+                                builder: (context, child) {
+                                  return Theme(
+                                    data: Theme.of(context).copyWith(
+                                      colorScheme: ColorScheme.light(
+                                        primary: primaryColor,
+                                        onPrimary: Colors.white,
+                                        surface: Colors.white,
+                                        onSurface: Colors.grey.shade800,
+                                      ),
+                                    ),
+                                    child: child!,
+                                  );
+                                },
+                              );
+                              if (picked != null) {
+                                setSheetState(() => tempEnd = picked);
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: primaryColor.withValues(alpha: 0.3), width: 1.5),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.bedtime_outlined, size: 16, color: Colors.orange.shade700),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'END TIME',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orange.shade800,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _formatTimeOfDay(tempEnd),
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Row(
+                                    children: [
+                                      Icon(Icons.touch_app_rounded, size: 12, color: primaryColor),
+                                      SizedBox(width: 4),
+                                      Text('Tap to edit clock', style: TextStyle(fontSize: 11, color: primaryColor, fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Duration and Window Summary Pill
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.timelapse_rounded, size: 18, color: primaryColor),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Window: ${_formatTimeOfDay(tempStart)} – ${_formatTimeOfDay(tempEnd)}',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            '${hours}h ${mins > 0 ? '${mins}m' : ''}',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: primaryColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Quick presets
+                    const Text('QUICK PRESETS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 0.5)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _buildPresetChip('Standard (11:30 - 1:30)', const TimeOfDay(hour: 11, minute: 30), const TimeOfDay(hour: 13, minute: 30), tempStart, tempEnd, (s, e) => setSheetState(() { tempStart = s; tempEnd = e; })),
+                        _buildPresetChip('Early Lunch (11:00 - 12:30)', const TimeOfDay(hour: 11, minute: 0), const TimeOfDay(hour: 12, minute: 30), tempStart, tempEnd, (s, e) => setSheetState(() { tempStart = s; tempEnd = e; })),
+                        _buildPresetChip('Noon Rush (12:00 - 1:30)', const TimeOfDay(hour: 12, minute: 0), const TimeOfDay(hour: 13, minute: 30), tempStart, tempEnd, (s, e) => setSheetState(() { tempStart = s; tempEnd = e; })),
+                        _buildPresetChip('Late Lunch (12:30 - 2:00)', const TimeOfDay(hour: 12, minute: 30), const TimeOfDay(hour: 14, minute: 0), tempStart, tempEnd, (s, e) => setSheetState(() { tempStart = s; tempEnd = e; })),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
+                            ),
+                            icon: const Icon(Icons.check_rounded, size: 20),
+                            label: const Text('Save Window', style: TextStyle(fontWeight: FontWeight.bold)),
+                            onPressed: () async {
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setInt('pref_lunch_start_hour', tempStart.hour);
+                              await prefs.setInt('pref_lunch_start_minute', tempStart.minute);
+                              await prefs.setInt('pref_lunch_end_hour', tempEnd.hour);
+                              await prefs.setInt('pref_lunch_end_minute', tempEnd.minute);
+
+                              if (mounted) {
+                                setState(() {
+                                  _lunchStartTime = tempStart;
+                                  _lunchEndTime = tempEnd;
+                                });
+                              }
+                              if (!ctx.mounted) return;
+                              Navigator.pop(ctx);
+
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Lunch pickup window set to ${_formatTimeOfDay(tempStart)} – ${_formatTimeOfDay(tempEnd)}'),
+                                    backgroundColor: Colors.green,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildPresetChip(
+    String label,
+    TimeOfDay start,
+    TimeOfDay end,
+    TimeOfDay currentStart,
+    TimeOfDay currentEnd,
+    Function(TimeOfDay, TimeOfDay) onSelect,
+  ) {
+    final isSelected = currentStart.hour == start.hour &&
+        currentStart.minute == start.minute &&
+        currentEnd.hour == end.hour &&
+        currentEnd.minute == end.minute;
+
+    return ActionChip(
+      label: Text(label),
+      labelStyle: TextStyle(
+        fontSize: 11,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        color: isSelected ? Colors.white : Colors.black87,
+      ),
+      backgroundColor: isSelected ? primaryColor : Colors.grey.shade100,
+      side: BorderSide(color: isSelected ? primaryColor : Colors.grey.shade300),
+      onPressed: () => onSelect(start, end),
     );
   }
 }

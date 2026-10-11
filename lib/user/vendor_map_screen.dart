@@ -117,7 +117,7 @@ class _VendorMapScreenState extends State<VendorMapScreen> {
                           color: Colors.blue,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4)],
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4)],
                         ),
                       ),
                     ),
@@ -158,7 +158,7 @@ class _VendorMapScreenState extends State<VendorMapScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10))],
               ),
               child: Row(
                 children: [
@@ -171,9 +171,9 @@ class _VendorMapScreenState extends State<VendorMapScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(widget.vendor['store_name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(widget.vendor['store_name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 4),
-                        Text(widget.vendor['location_description'] ?? 'Campus Area', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                        Text(widget.vendor['location_description'] ?? 'Campus Area', style: TextStyle(color: Colors.grey.shade600, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
                       ],
                     ),
                   ),

@@ -127,7 +127,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 children: [
                   // --- HEADER TEXT ---
                   Text(
-                    _isUser ? 'Student Registration' : 'Vendor Registration',
+                    _isUser ? 'Customer Registration' : 'Vendor Registration',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 26,
@@ -183,13 +183,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
-                                    Icons.school_rounded,
+                                    Icons.person_outline_rounded,
                                     size: 18,
                                     color: _isUser ? Colors.white : Colors.grey.shade700,
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    'Student',
+                                    'Customer',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 14,
@@ -309,7 +309,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
                             labelText: 'Email Address',
-                            hintText: _isUser ? 'student@nemsu.edu.ph' : 'vendor@carenderia.com',
+                            hintText: _isUser ? 'customer@email.com' : 'vendor@carenderia.com',
                             prefixIcon: Icon(Icons.mail_outline_rounded, color: primaryColor),
                             filled: true,
                             fillColor: Colors.grey.shade50,
@@ -465,7 +465,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
                             )
                           : Text(
-                              _isUser ? 'Create Student Account' : 'Register Carenderia',
+                              _isUser ? 'Create Customer Account' : 'Register Carenderia',
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             ),
                     ),

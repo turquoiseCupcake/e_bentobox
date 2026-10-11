@@ -51,7 +51,7 @@ class _UserMainScreenState extends State<UserMainScreen> {
 
     // 3. Listen for order status updates
     socket.on('order_status_update', (data) {
-      // Check if this update belongs to the logged-in student
+      // Check if this update belongs to the logged-in customer
       if (data['userId'] == currentUserId) {
         _showNotificationBanner(data['status']);
       }

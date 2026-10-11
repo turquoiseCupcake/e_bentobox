@@ -142,7 +142,7 @@ class NotificationProvider extends ChangeNotifier {
 
     // Listen for the broadcast from server.js
     _socket!.on('order_status_update', (data) {
-      // Only alert if the update belongs to this logged-in student!
+      // Only alert if the update belongs to this logged-in customer!
       if (data['userId'] == userId) {
         final status = data['status'];
         _notifications.insert(0, 'Order Update: Your Bento Box is now $status!');
@@ -164,7 +164,7 @@ class NotificationProvider extends ChangeNotifier {
 }
 
 // ==========================================
-// UI SCREEN: Dummy Menu (Student Side)
+// UI SCREEN: Menu (Customer Side)
 // ==========================================
 class DummyMenuScreen extends StatelessWidget {
   const DummyMenuScreen({super.key});

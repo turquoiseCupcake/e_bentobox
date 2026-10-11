@@ -8,6 +8,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 
 class VendorEditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> vendorData;
@@ -347,7 +348,17 @@ class _VendorEditProfileScreenState extends State<VendorEditProfileScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _hoursController,
-                      decoration: InputDecoration(labelText: 'Operating Hours (e.g. Mon-Fri 8AM-5PM)', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                      decoration: InputDecoration(
+                        labelText: 'Operating Hours (e.g. Mon-Fri 8AM-5PM)',
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.edit_calendar_rounded, color: primaryColor),
+                          tooltip: 'Select Time & Date Schedule',
+                          onPressed: _openSchedulePicker,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -539,6 +550,289 @@ class _VendorEditProfileScreenState extends State<VendorEditProfileScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  String _formatTimeOfDay(TimeOfDay time) {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
+  void _openSchedulePicker() {
+    TimeOfDay tempOpen = const TimeOfDay(hour: 7, minute: 0);
+    TimeOfDay tempClose = const TimeOfDay(hour: 17, minute: 0);
+    Set<String> selectedDays = {'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'};
+    DateTime? tempDate = DateTime.now();
+
+    final currentText = _hoursController.text;
+    if (currentText.contains('Mon-Fri')) {
+      selectedDays = {'Mon', 'Tue', 'Wed', 'Thu', 'Fri'};
+    } else if (currentText.contains('Daily') || currentText.contains('Mon-Sun')) {
+      selectedDays = {'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'};
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            String formatSchedule() {
+              String daysLabel;
+              if (selectedDays.length == 7) {
+                daysLabel = 'Daily';
+              } else if (selectedDays.containsAll({'Mon', 'Tue', 'Wed', 'Thu', 'Fri'}) && selectedDays.length == 5) {
+                daysLabel = 'Mon-Fri';
+              } else if (selectedDays.containsAll({'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'}) && selectedDays.length == 6) {
+                daysLabel = 'Mon-Sat';
+              } else if (selectedDays.isEmpty) {
+                daysLabel = 'Custom';
+              } else {
+                const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                final sorted = dayOrder.where((d) => selectedDays.contains(d)).toList();
+                daysLabel = sorted.join(', ');
+              }
+
+              final timeStr = '${_formatTimeOfDay(tempOpen)} - ${_formatTimeOfDay(tempClose)}';
+              if (tempDate != null) {
+                return '$daysLabel • $timeStr (From ${DateFormat('MMM d').format(tempDate!)})';
+              }
+              return '$daysLabel • $timeStr';
+            }
+
+            final preview = formatSchedule();
+
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Row(
+                        children: [
+                          Icon(Icons.access_time_filled_rounded, color: primaryColor, size: 24),
+                          SizedBox(width: 10),
+                          Text('Select Store Hours & Schedule', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Opens At / Closes At
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: tempOpen,
+                                  helpText: 'SELECT STORE OPENING TIME',
+                                  builder: (context, child) => Theme(
+                                    data: Theme.of(context).copyWith(
+                                      colorScheme: const ColorScheme.light(primary: primaryColor, onPrimary: Colors.white),
+                                    ),
+                                    child: child!,
+                                  ),
+                                );
+                                if (picked != null) setSheetState(() => tempOpen = picked);
+                              },
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.pink.shade50.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: primaryColor.withValues(alpha: 0.3)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('OPENS AT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: primaryColor)),
+                                    const SizedBox(height: 4),
+                                    Text(_formatTimeOfDay(tempOpen), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 2),
+                                    const Text('Tap clock', style: TextStyle(fontSize: 10, color: primaryColor)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: tempClose,
+                                  helpText: 'SELECT STORE CLOSING TIME',
+                                  builder: (context, child) => Theme(
+                                    data: Theme.of(context).copyWith(
+                                      colorScheme: const ColorScheme.light(primary: primaryColor, onPrimary: Colors.white),
+                                    ),
+                                    child: child!,
+                                  ),
+                                );
+                                if (picked != null) setSheetState(() => tempClose = picked);
+                              },
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.pink.shade50.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: primaryColor.withValues(alpha: 0.3)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('CLOSES AT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: primaryColor)),
+                                    const SizedBox(height: 4),
+                                    Text(_formatTimeOfDay(tempClose), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 2),
+                                    const Text('Tap clock', style: TextStyle(fontSize: 10, color: primaryColor)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Days
+                      const Text('OPERATING DAYS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) {
+                          final isSelected = selectedDays.contains(day);
+                          return InkWell(
+                            onTap: () {
+                              setSheetState(() {
+                                if (isSelected) {
+                                  if (selectedDays.length > 1) selectedDays.remove(day);
+                                } else {
+                                  selectedDays.add(day);
+                                }
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              width: 42,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected ? primaryColor : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: isSelected ? primaryColor : Colors.grey.shade300),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  day,
+                                  style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, color: isSelected ? Colors.white : Colors.black87),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Date Picker
+                      const Text('OPENING / EFFECTIVE DATE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: tempDate ?? DateTime.now(),
+                            firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                            builder: (context, child) => Theme(
+                              data: Theme.of(context).copyWith(
+                                colorScheme: const ColorScheme.light(primary: primaryColor, onPrimary: Colors.white),
+                              ),
+                              child: child!,
+                            ),
+                          );
+                          if (picked != null) setSheetState(() => tempDate = picked);
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(tempDate != null ? DateFormat('EEE, MMM d, yyyy').format(tempDate!) : 'Select Date', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              const Icon(Icons.calendar_month_rounded, size: 18, color: primaryColor),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Preview
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.pink.shade50, borderRadius: BorderRadius.circular(12)),
+                        child: Text('Preview: $preview', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: primaryColor)),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Action
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: primaryColor,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              onPressed: () {
+                                _hoursController.text = preview;
+                                Navigator.pop(ctx);
+                              },
+                              child: const Text('Apply to Profile', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
