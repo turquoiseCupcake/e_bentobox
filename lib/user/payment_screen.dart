@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
 import '../main.dart'; 
-import 'user_main_screen.dart'; 
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -24,8 +23,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _isError = false;
   String _errorMessage = '';
 
-  // Removed initState() so it doesn't process instantly anymore!
-
   Future<void> _processOrder() async {
     setState(() {
       _isProcessing = true;
@@ -34,7 +31,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
     try {
       // 1. Simulate a realistic gateway delay
-      await Future.delayed(const Duration(seconds: 3));
+      await Future.delayed(const Duration(seconds: 2));
 
       if (!mounted) return;
       final cartProvider = context.read<BentoCartProvider>();
@@ -49,7 +46,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final userId = prefs.getString('userId');
       if (userId == null) throw Exception("Please log in again.");
 
-      final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
+      final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://54.254.206.248:3000';
       final formattedDate = DateFormat('yyyy-MM-dd').format(reservationDate);
 
       // 2. Group Cart Items by Vendor
@@ -128,13 +125,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),
-        automaticallyImplyLeading: !_isProcessing && !_isSuccess, // Block back button during/after process
+        automaticallyImplyLeading: !_isProcessing && !_isSuccess, // Block back button during process
       ),
       body: _buildBody(totalPrice),
     );
   }
 
   Widget _buildBody(double totalPrice) {
+    // --- STATE 1: LOADING SPINNER ---
     if (_isProcessing) {
       return Center(
         child: Column(
@@ -150,6 +148,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
     }
 
+    // --- STATE 2: SUCCESS SCREEN ---
     if (_isSuccess) {
       return Center(
         child: Padding(
@@ -181,11 +180,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     elevation: 0,
                   ),
                   onPressed: () {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (context) => const UserMainScreen()),
-                      (Route<dynamic> route) => false,
-                    );
+                    // This safely pops the stack back to the Home Screen WITHOUT killing WebSockets!
+                    Navigator.popUntil(context, (route) => route.isFirst);
                   },
                   child: const Text('Back to Home', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                 ),
@@ -196,6 +192,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
     }
 
+    // --- STATE 3: ERROR SCREEN ---
     if (_isError) {
       return Center(
         child: Padding(
@@ -220,12 +217,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
     }
 
-    // --- MAIN PAYMENT PORTAL UI ---
+    // --- STATE 4: DEFAULT PAYMENT FORM ---
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

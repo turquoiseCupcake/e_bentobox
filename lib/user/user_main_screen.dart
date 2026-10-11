@@ -36,7 +36,7 @@ class _UserMainScreenState extends State<UserMainScreen> {
     currentUserId = prefs.getString('userId');
 
     // 2. Connect to the VPS WebSocket
-    final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
+    final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://54.254.206.248:3000';
     
     socket = IO.io(baseUrl, IO.OptionBuilder()
         .setTransports(['websocket'])

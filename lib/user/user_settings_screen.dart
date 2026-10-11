@@ -78,7 +78,7 @@ class UserSettingsScreen extends StatelessWidget {
                           final prefs = await SharedPreferences.getInstance();
                           final userId = prefs.getString('userId');
                           final role = prefs.getString('userRole');
-                          final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
+                          final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://54.254.206.248:3000';
 
                           final response = await http.put(
                             Uri.parse('$baseUrl/api/change-password'),

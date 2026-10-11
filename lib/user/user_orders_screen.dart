@@ -27,7 +27,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   @override
   void initState() {
     super.initState();
-    _baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
+    _baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://54.254.206.248:3000';
     _fetchMyOrders();
   }
 

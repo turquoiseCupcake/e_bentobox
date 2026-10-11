@@ -43,13 +43,20 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
+    _baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://54.254.206.248:3000';
     _fetchExploreData();
+
+    // Connect to WebSockets for live notifications when screen opens!
+    Future.microtask(() {
+      context.read<NotificationProvider>().connect();
+    });
   }
 
+  // --- RESTORE THE MISSING FUNCTIONS HERE ---
   Future<void> _fetchExploreData() async {
     setState(() => _isLoading = true);
     try {
+      // Fetch both APIs concurrently
       final responses = await Future.wait([
         http.get(Uri.parse('$_baseUrl/api/menu-items')),
         http.get(Uri.parse('$_baseUrl/api/vendors')),
@@ -63,8 +70,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           setState(() {
             _allFoods = foodData['items'] ?? [];
             _allVendors = vendorData['vendors'] ?? [];
-            _filteredFoods = _allFoods;
-            _filteredVendors = _allVendors;
             _applyFilters();
           });
         }
@@ -78,17 +83,20 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   void _applyFilters() {
     setState(() {
+      // Filter Foods based on Search Query AND Category
       _filteredFoods = _allFoods.where((f) {
         final matchesSearch = f['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
         final matchesCategory = _selectedCategory.isEmpty || f['category'] == _selectedCategory;
         return matchesSearch && matchesCategory;
       }).toList();
 
+      // Filter Vendors based on Search Query
       _filteredVendors = _allVendors.where((v) {
         return v['store_name'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
       }).toList();
     });
   }
+  // --- END OF RESTORED FUNCTIONS ---
 
   void _onSearchChanged(String query) {
     _searchQuery = query;
@@ -131,21 +139,81 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                               Text('Reserve your lunch for tomorrow', style: TextStyle(color: Colors.white70, fontSize: 14)),
                             ],
                           ),
-                          Stack(
+                          // Right Side Icons (Bell + Cart)
+                          Row(
                             children: [
-                              IconButton(
-                                icon: const Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 28),
-                                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CartScreen())),
-                              ),
-                              if (cartCount > 0)
-                                Positioned(
-                                  right: 4, top: 4,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                    child: Text('$cartCount', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                              // Notification Icon Badge
+                              Stack(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 28),
+                                    onPressed: () {
+                                      // Clear red badge
+                                      context.read<NotificationProvider>().markAsRead();
+                                      
+                                      // Show Notification Dropdown Dialog
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) {
+                                          final notifs = context.read<NotificationProvider>().notifications;
+                                          return AlertDialog(
+                                            title: const Text('Notifications', style: TextStyle(fontWeight: FontWeight.bold)),
+                                            content: SizedBox(
+                                              width: double.maxFinite,
+                                              height: 300,
+                                              child: notifs.isEmpty
+                                                  ? const Center(child: Text('No new notifications.', style: TextStyle(color: Colors.grey)))
+                                                  : ListView.builder(
+                                                      itemCount: notifs.length,
+                                                      itemBuilder: (context, index) {
+                                                        return ListTile(
+                                                          leading: const Icon(Icons.info, color: Colors.orange),
+                                                          title: Text(notifs[index], style: const TextStyle(fontWeight: FontWeight.w600)),
+                                                        );
+                                                      },
+                                                    ),
+                                            ),
+                                            actions: [
+                                              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close', style: TextStyle(color: Colors.orange)))
+                                            ],
+                                          );
+                                        },
+                                      );
+                                    },
                                   ),
-                                )
+                                  // Red dot for unread notifications
+                                  if (context.watch<NotificationProvider>().unreadCount > 0)
+                                    Positioned(
+                                      right: 8, top: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                        child: Text(
+                                          '${context.watch<NotificationProvider>().unreadCount}', 
+                                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)
+                                        ),
+                                      ),
+                                    )
+                                ],
+                              ),
+                              // Cart Icon Badge
+                              Stack(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 28),
+                                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CartScreen())),
+                                  ),
+                                  if (cartCount > 0)
+                                    Positioned(
+                                      right: 4, top: 4,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                        child: Text('$cartCount', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      ),
+                                    )
+                                ],
+                              ),
                             ],
                           )
                         ],

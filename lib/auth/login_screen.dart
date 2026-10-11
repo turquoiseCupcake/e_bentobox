@@ -29,7 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://13.250.200.60:3000';
+      final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://54.254.206.248:3000';
       
       // The role is determined by the toggle switch on the UI
       final String role = _isVendor ? 'Vendor' : 'User'; // Note: Changed to 'User' to match backend expectation

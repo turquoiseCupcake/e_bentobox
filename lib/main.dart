@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'auth/login_screen.dart';
 
 Future<void> main() async {
@@ -11,9 +13,12 @@ Future<void> main() async {
   await dotenv.load(fileName: ".env");
 
   runApp(
-    // 1. Wrap the app in a ChangeNotifierProvider for State Management
-    ChangeNotifierProvider(
-      create: (context) => BentoCartProvider(),
+    // MultiProvider lets us run the Cart and Notifications at the same time!
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => BentoCartProvider()),
+        ChangeNotifierProvider(create: (context) => NotificationProvider()),
+      ],
       child: const MyApp(),
     ),
   );
@@ -85,6 +90,56 @@ class BentoCartProvider extends ChangeNotifier {
     return _cartItems.any((item) => 
         item['is_available'] == false || 
         item['is_available_tomorrow'] == false);
+  }
+}
+
+// ==========================================
+// STATE MANAGEMENT: Live Notifications
+// ==========================================
+class NotificationProvider extends ChangeNotifier {
+  final List<String> _notifications = [];
+  int _unreadCount = 0;
+  IO.Socket? _socket;
+
+  List<String> get notifications => _notifications;
+  int get unreadCount => _unreadCount;
+
+  Future<void> connect() async {
+    if (_socket != null && _socket!.connected) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('userId');
+    if (userId == null) return;
+
+    final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://54.254.206.248:3000';
+
+    _socket = IO.io(baseUrl, IO.OptionBuilder()
+        .setTransports(['websocket'])
+        .disableAutoConnect()
+        .build());
+
+    _socket!.connect();
+
+    // Listen for the broadcast from server.js
+    _socket!.on('order_status_update', (data) {
+      // Only alert if the update belongs to this logged-in student!
+      if (data['userId'] == userId) {
+        final status = data['status'];
+        _notifications.insert(0, 'Order Update: Your Bento Box is now $status!');
+        _unreadCount++;
+        notifyListeners();
+      }
+    });
+  }
+
+  void markAsRead() {
+    _unreadCount = 0;
+    notifyListeners();
+  }
+  
+  void disconnect() {
+    _socket?.disconnect();
+    _socket = null;
   }
 }
 
