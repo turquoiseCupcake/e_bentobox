@@ -19,16 +19,133 @@ class UserOrdersScreen extends StatefulWidget {
 class _UserOrdersScreenState extends State<UserOrdersScreen> {
   final Color primaryColor = Colors.orange;
   
-  DateTime _selectedDate = DateTime.now().add(const Duration(days: 1)); // Default to tomorrow
+  DateTime _selectedDate = DateTime.now(); // Defaults to CURRENT DAY (Today)
+  final ScrollController _calendarScrollController = ScrollController();
   List<dynamic> _myOrders = [];
   bool _isLoading = true;
   String _baseUrl = '';
+  int _backlogCount = 0;
+  bool _isViewingBacklog = false;
+  String _selectedStatusFilter = 'All';
+
+  List<dynamic> get _filteredOrders {
+    if (_selectedStatusFilter == 'All') {
+      return _myOrders;
+    } else if (_selectedStatusFilter == 'Current') {
+      return _myOrders.where((o) =>
+        ['Pending', 'Accepted', 'Ready', 'Ready for Pickup'].contains(o['status'])
+      ).toList();
+    } else if (_selectedStatusFilter == 'Ready') {
+      return _myOrders.where((o) =>
+        o['status'] == 'Ready' || o['status'] == 'Ready for Pickup'
+      ).toList();
+    } else if (_selectedStatusFilter == 'Claimed') {
+      return _myOrders.where((o) => o['status'] == 'Claimed').toList();
+    } else {
+      return _myOrders.where((o) => o['status'] == _selectedStatusFilter).toList();
+    }
+  }
+
+  int get _allCount => _myOrders.length;
+  int get _currentCount => _myOrders.where((o) => ['Pending', 'Accepted', 'Ready', 'Ready for Pickup'].contains(o['status'])).length;
+  int get _pendingCount => _myOrders.where((o) => o['status'] == 'Pending').length;
+  int get _acceptedCount => _myOrders.where((o) => o['status'] == 'Accepted').length;
+  int get _readyCount => _myOrders.where((o) => o['status'] == 'Ready' || o['status'] == 'Ready for Pickup').length;
+  int get _completedCount => _myOrders.where((o) => o['status'] == 'Claimed').length;
+
+  Widget _buildFilterChip({required String key, required String label, required int count}) {
+    final isSelected = _selectedStatusFilter == key;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedStatusFilter = key),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? primaryColor : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? primaryColor : Colors.grey.shade300,
+            width: 1.2,
+          ),
+          boxShadow: isSelected
+              ? [BoxShadow(color: primaryColor.withValues(alpha: 0.25), blurRadius: 6, offset: const Offset(0, 2))]
+              : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 2, offset: const Offset(0, 1))],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                color: isSelected ? Colors.white : Colors.grey.shade700,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.white.withValues(alpha: 0.25) : Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.white : Colors.grey.shade700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     _baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://54.254.206.248:3000';
+    _selectedDate = DateTime.now(); // Defaults to CURRENT DAY (Today)
     _fetchMyOrders();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToSelectedDate(animate: false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _calendarScrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToSelectedDate({bool animate = true}) {
+    if (!_calendarScrollController.hasClients) return;
+    final now = DateTime.now();
+    final startDay = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 7));
+    final targetDay = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final diff = targetDay.difference(startDay).inDays;
+
+    if (diff >= 0 && diff <= 20) {
+      const itemWidth = 77.0; // 65 card width + 12 margin
+      final screenWidth = MediaQuery.of(context).size.width;
+      final targetOffset = (16.0 + diff * itemWidth + 32.5) - (screenWidth / 2);
+      final maxScroll = _calendarScrollController.position.maxScrollExtent;
+      final clampedOffset = targetOffset.clamp(0.0, maxScroll);
+
+      if (animate) {
+        _calendarScrollController.animateTo(
+          clampedOffset,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+        );
+      } else {
+        _calendarScrollController.jumpTo(clampedOffset);
+      }
+    }
   }
 
   Future<void> _fetchMyOrders() async {
@@ -39,17 +156,22 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
 
       if (userId == null) throw Exception('Not logged in');
 
-      final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
+      final String url;
+      if (_isViewingBacklog) {
+        url = '$_baseUrl/api/users/$userId/orders?filter=backlog';
+      } else {
+        final formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate);
+        url = '$_baseUrl/api/users/$userId/orders?date=$formattedDate';
+      }
 
-      final response = await http.get(
-        Uri.parse('$_baseUrl/api/users/$userId/orders?date=$formattedDate')
-      );
+      final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success']) {
           setState(() {
-            _myOrders = data['orders'];
+            _myOrders = data['orders'] ?? [];
+            _backlogCount = data['backlogCount'] ?? 0;
           });
         }
       }
@@ -63,12 +185,13 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     }
   }
 
-  Future<void> _claimOrder(int index) async {
-    final orderId = _myOrders[index]['id'];
-    
-    setState(() {
-      _myOrders[index]['status'] = 'Claimed';
-    });
+  Future<void> _claimOrder(String orderId) async {
+    final index = _myOrders.indexWhere((o) => o['id'] == orderId);
+    if (index != -1) {
+      setState(() {
+        _myOrders[index]['status'] = 'Claimed';
+      });
+    }
 
     try {
       final response = await http.put(
@@ -115,21 +238,22 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 16),
-          // --- HORIZONTAL CALENDAR SCROLL ---
+          // --- HORIZONTAL CALENDAR SCROLL (-7 to +13 days) ---
           SizedBox(
             height: 90,
             child: ListView.builder(
+              controller: _calendarScrollController,
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: 15, 
+              itemCount: 22, 
               itemBuilder: (context, index) {
-                if (index == 14) {
+                if (index == 21) {
                   return GestureDetector(
                     onTap: () async {
                       final DateTime? pickedDate = await showDatePicker(
                         context: context,
-                        initialDate: _selectedDate.isBefore(DateTime.now()) ? DateTime.now() : _selectedDate,
-                        firstDate: DateTime.now(),
+                        initialDate: _selectedDate,
+                        firstDate: DateTime.now().subtract(const Duration(days: 90)),
                         lastDate: DateTime.now().add(const Duration(days: 90)),
                         builder: (context, child) {
                           return Theme(
@@ -141,8 +265,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         },
                       );
                       if (pickedDate != null) {
-                        setState(() => _selectedDate = pickedDate);
+                        setState(() {
+                          _isViewingBacklog = false;
+                          _selectedDate = pickedDate;
+                        });
                         _fetchMyOrders();
+                        _scrollToSelectedDate();
                       }
                     },
                     child: Container(
@@ -165,13 +293,18 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   );
                 }
 
-                final date = DateTime.now().add(Duration(days: index));
-                final isSelected = date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year;
+                final date = DateTime.now().subtract(const Duration(days: 7)).add(Duration(days: index));
+                final isSelected = !_isViewingBacklog && date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year;
+                final isToday = date.day == DateTime.now().day && date.month == DateTime.now().month && date.year == DateTime.now().year;
 
                 return GestureDetector(
                   onTap: () {
-                    setState(() => _selectedDate = date);
+                    setState(() {
+                      _isViewingBacklog = false;
+                      _selectedDate = date;
+                    });
                     _fetchMyOrders(); 
+                    _scrollToSelectedDate();
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
@@ -180,22 +313,37 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     decoration: BoxDecoration(
                       color: isSelected ? primaryColor : Colors.white,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: isSelected ? primaryColor : Colors.grey.shade200, width: 1.5),
+                      border: Border.all(
+                        color: isSelected 
+                            ? primaryColor 
+                            : (isToday ? primaryColor.withValues(alpha: 0.6) : Colors.grey.shade200),
+                        width: isToday && !isSelected ? 1.8 : 1.5,
+                      ),
                       boxShadow: isSelected
-                          ? [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]
-                          : [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+                          ? [BoxShadow(color: primaryColor.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))]
+                          : (isToday
+                              ? [BoxShadow(color: primaryColor.withValues(alpha: 0.12), blurRadius: 6, offset: const Offset(0, 2))]
+                              : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 4, offset: const Offset(0, 2))]),
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          DateFormat('EEE').format(date).toUpperCase(),
-                          style: TextStyle(color: isSelected ? Colors.white70 : Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 11),
+                          isToday ? 'TODAY' : DateFormat('EEE').format(date).toUpperCase(),
+                          style: TextStyle(
+                            color: isSelected ? Colors.white70 : (isToday ? primaryColor : Colors.grey.shade500),
+                            fontWeight: FontWeight.bold,
+                            fontSize: isToday ? 10 : 11,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '${date.day}',
-                          style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 20),
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : (isToday ? primaryColor : Colors.black87),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 20,
+                          ),
                         ),
                       ],
                     ),
@@ -205,13 +353,162 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
             ),
           ),
           
+          // --- OVERDUE / UNCLAIMED BACKLOG BANNER ---
+          if (_backlogCount > 0)
+            GestureDetector(
+              onTap: () {
+                setState(() => _isViewingBacklog = !_isViewingBacklog);
+                _fetchMyOrders();
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _isViewingBacklog ? Colors.orange.shade100 : const Color(0xFFFFF3E0),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _isViewingBacklog ? Colors.orange.shade800 : Colors.orange.shade300,
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.orange.shade900, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$_backlogCount Unclaimed Orders From Previous Days',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade900,
+                              fontSize: 13,
+                            ),
+                          ),
+                          Text(
+                            _isViewingBacklog
+                                ? 'Viewing past reservations • Tap to return to calendar'
+                                : 'Pending or ready meals • Tap to view & claim',
+                            style: TextStyle(color: Colors.orange.shade800, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _isViewingBacklog ? Colors.orange.shade900 : Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        _isViewingBacklog ? 'Show Calendar' : 'View Backlog',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: _isViewingBacklog ? Colors.white : Colors.orange.shade900,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-            child: Text(
-              'Orders for ${DateFormat('MMMM d').format(_selectedDate)}',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      _isViewingBacklog
+                          ? 'Unclaimed Backlog'
+                          : (_selectedDate.day == DateTime.now().day && _selectedDate.month == DateTime.now().month && _selectedDate.year == DateTime.now().year
+                              ? 'Today\'s Reservations'
+                              : 'Orders for ${DateFormat('MMMM d').format(_selectedDate)}'),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+                    ),
+                    if (_isViewingBacklog) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'All Past Dates',
+                          style: TextStyle(color: Colors.orange.shade900, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ] else if (_selectedDate.day != DateTime.now().day || _selectedDate.month != DateTime.now().month || _selectedDate.year != DateTime.now().year) ...[
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedDate = DateTime.now();
+                          });
+                          _fetchMyOrders();
+                          _scrollToSelectedDate();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: primaryColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: primaryColor.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.today, size: 12, color: primaryColor),
+                              const SizedBox(width: 4),
+                              Text('Jump to Today', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 10)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (!_isLoading)
+                  Text('${_filteredOrders.length} Items', style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+              ],
             ),
           ),
+
+          // --- HORIZONTAL STATUS FILTER ROW ---
+          SizedBox(
+            height: 38,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                _buildFilterChip(key: 'All', label: 'All', count: _allCount),
+                const SizedBox(width: 8),
+                _buildFilterChip(key: 'Current', label: 'Current Orders', count: _currentCount),
+                const SizedBox(width: 8),
+                _buildFilterChip(key: 'Pending', label: 'Pending', count: _pendingCount),
+                const SizedBox(width: 8),
+                _buildFilterChip(key: 'Accepted', label: 'Preparing', count: _acceptedCount),
+                const SizedBox(width: 8),
+                _buildFilterChip(key: 'Ready', label: 'Ready for Pickup', count: _readyCount),
+                const SizedBox(width: 8),
+                _buildFilterChip(key: 'Claimed', label: 'Completed', count: _completedCount),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
 
           // --- REAL ORDERS LIST ---
           Expanded(
@@ -228,15 +525,44 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                           ],
                         ),
                       )
-                    : RefreshIndicator(
-                        color: primaryColor,
-                        onRefresh: _fetchMyOrders,
-                        child: ListView.builder(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _myOrders.length,
-                          itemBuilder: (context, index) {
-                            final order = _myOrders[index];
+                    : _filteredOrders.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.filter_list_off, size: 54, color: Colors.grey.shade300),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'No ${_selectedStatusFilter == "Current" ? "Current" : _selectedStatusFilter} orders',
+                                  style: TextStyle(color: Colors.grey.shade700, fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'There are no reservations matching this filter.',
+                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                                ),
+                                const SizedBox(height: 16),
+                                OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: primaryColor,
+                                    side: BorderSide(color: primaryColor.withValues(alpha: 0.5)),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  onPressed: () => setState(() => _selectedStatusFilter = 'All'),
+                                  child: const Text('View All Orders'),
+                                ),
+                              ],
+                            ),
+                          )
+                        : RefreshIndicator(
+                            color: primaryColor,
+                            onRefresh: _fetchMyOrders,
+                            child: ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.all(16),
+                              itemCount: _filteredOrders.length,
+                              itemBuilder: (context, index) {
+                                final order = _filteredOrders[index];
                             final status = order['status'];
                             final isReady = status == 'Ready' || status == 'Ready for Pickup';
                             final isClaimed = status == 'Claimed';
@@ -266,21 +592,46 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                   children: [
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          '₱${totalAmount.toStringAsFixed(2)}', 
-                                          style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor, fontSize: 18)
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              '₱${totalAmount.toStringAsFixed(2)}', 
+                                              style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor, fontSize: 18)
+                                            ),
+                                            if (order['days_overdue'] != null && (order['days_overdue'] as num) > 0) ...[
+                                              const SizedBox(height: 4),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.red.shade50,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  border: Border.all(color: Colors.red.shade200),
+                                                ),
+                                                child: Text(
+                                                  '${order['days_overdue']}d Overdue • ${order['formatted_date'] ?? order['reservation_date']}',
+                                                  style: TextStyle(
+                                                    color: Colors.red.shade800,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 10,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                           decoration: BoxDecoration(
-                                            color: statusColor.withOpacity(0.1),
+                                            color: statusColor.withValues(alpha: 0.1),
                                             borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Text(
                                             status,
                                             style: TextStyle(
-                                              color: statusColor.withOpacity(0.8), 
+                                              color: statusColor.withValues(alpha: 0.8), 
                                               fontWeight: FontWeight.bold, 
                                               fontSize: 12
                                             ),
@@ -343,7 +694,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                                 borderRadius: BorderRadius.circular(12),
                                                 border: Border.all(color: Colors.grey.shade300),
                                                 boxShadow: [
-                                                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
+                                                  BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))
                                                 ],
                                               ),
                                               child: ClipRRect(
@@ -403,7 +754,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                                             // --- SECURITY UPDATE: CHECK IF QR MATCHES ---
                                             if (result != null && context.mounted) {
                                               if (result == qrId) {
-                                                _claimOrder(index); // It's a match! Claim it.
+                                                _claimOrder(order['id']); // It's a match! Claim it.
                                               } else {
                                                 // Invalid code!
                                                 ScaffoldMessenger.of(context).showSnackBar(

@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class VendorEditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> vendorData;
@@ -18,7 +19,7 @@ class VendorEditProfileScreen extends StatefulWidget {
 }
 
 class _VendorEditProfileScreenState extends State<VendorEditProfileScreen> {
-  final Color primaryColor = const Color(0xFFE91E63);
+  static const Color primaryColor = Color(0xFFE91E63);
   final _formKey = GlobalKey<FormState>();
   
   late TextEditingController _nameController;
@@ -30,13 +31,14 @@ class _VendorEditProfileScreenState extends State<VendorEditProfileScreen> {
   File? _newCoverImage;
   
   bool _isLoading = false;
+  bool _isDetectingLocation = false;
   late String _baseUrl;
   late String _currentProfileUrl;
   late String _currentCoverUrl;
 
   final MapController _mapController = MapController();
   LatLng? _selectedLocation;
-  // Default to Cagayan De Oro coordinates
+  // Default to Cagayan De Oro / NEMSU coordinates
   final LatLng _defaultLocation = const LatLng(8.4798, 124.6496);
 
   @override
@@ -51,33 +53,122 @@ class _VendorEditProfileScreenState extends State<VendorEditProfileScreen> {
     _hoursController = TextEditingController(text: widget.vendorData['operating_hours']);
     _locDescController = TextEditingController(text: widget.vendorData['location_description']);
 
-    if (widget.vendorData['latitude'] != null && widget.vendorData['longitude'] != null) {
-      _selectedLocation = LatLng(widget.vendorData['latitude'], widget.vendorData['longitude']);
-    } else {
-      _determineCurrentLocation();
+    final rawLat = widget.vendorData['latitude'];
+    final rawLng = widget.vendorData['longitude'];
+    if (rawLat != null && rawLng != null) {
+      final double? parsedLat = rawLat is num ? rawLat.toDouble() : double.tryParse(rawLat.toString());
+      final double? parsedLng = rawLng is num ? rawLng.toDouble() : double.tryParse(rawLng.toString());
+      if (parsedLat != null && parsedLng != null) {
+        _selectedLocation = LatLng(parsedLat, parsedLng);
+      }
+    }
+
+    // Auto-detect current location if vendor has no coordinates saved yet
+    if (_selectedLocation == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _detectCurrentLocation(userInitiated: false);
+      });
     }
   }
 
-  Future<void> _determineCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+  Future<void> _detectCurrentLocation({bool userInitiated = true}) async {
+    setState(() => _isDetectingLocation = true);
+    final messenger = ScaffoldMessenger.of(context);
 
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (userInitiated && mounted) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: const Text('Location services are turned off. Please turn on GPS.'),
+              backgroundColor: Colors.orange.shade800,
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'Settings',
+                textColor: Colors.white,
+                onPressed: () => Geolocator.openLocationSettings(),
+              ),
+            ),
+          );
+        }
+        return;
+      }
 
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (userInitiated && mounted) {
+            messenger.showSnackBar(
+              const SnackBar(
+                content: Text('Location permission denied.'),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (userInitiated && mounted) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: const Text('Location permissions permanently denied. Enable in app settings.'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'Settings',
+                textColor: Colors.white,
+                onPressed: () => Geolocator.openAppSettings(),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      final Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      if (!mounted) return;
+      final detectedLatLng = LatLng(position.latitude, position.longitude);
+      setState(() {
+        _selectedLocation = detectedLatLng;
+      });
+
+      _mapController.move(detectedLatLng, 16.5);
+
+      if (userInitiated) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Location pinned to GPS (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})',
+            ),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (userInitiated && mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Failed to detect GPS location: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDetectingLocation = false);
+      }
     }
-    if (permission == LocationPermission.deniedForever) return;
-
-    Position position = await Geolocator.getCurrentPosition();
-    setState(() {
-      _selectedLocation = LatLng(position.latitude, position.longitude);
-    });
-
-    _mapController.move(_selectedLocation!, 15.0);
   }
 
   Future<void> _pickImage(bool isCover) async {
@@ -127,8 +218,14 @@ class _VendorEditProfileScreenState extends State<VendorEditProfileScreen> {
       }
 
       // Update Profile Database Record
+      final prefs = await SharedPreferences.getInstance();
+      final vendorId = widget.vendorData['id'] ?? prefs.getString('userId');
+      if (vendorId == null) {
+        throw Exception('Vendor ID not found.');
+      }
+
       final response = await http.put(
-        Uri.parse('$_baseUrl/api/vendors/${widget.vendorData['id']}'),
+        Uri.parse('$_baseUrl/api/vendors/$vendorId'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'store_name': _nameController.text,
@@ -142,7 +239,9 @@ class _VendorEditProfileScreenState extends State<VendorEditProfileScreen> {
         }),
       );
 
-      if (response.statusCode == 200 && mounted) {
+      if (response.statusCode == 200) {
+        await prefs.setString('userName', _nameController.text);
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile Updated!'), backgroundColor: Colors.green));
         Navigator.pop(context);
       }
@@ -257,44 +356,168 @@ class _VendorEditProfileScreenState extends State<VendorEditProfileScreen> {
                     ),
                     const SizedBox(height: 32),
 
-                    // --- MAP PICKER ---
-                    const Text('Pin Exact Location', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    const Text('Tap on the map to place your store pin.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    // --- MAP PICKER SECTION ---
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Pin Exact Location', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            SizedBox(height: 2),
+                            Text('Tap map or auto-detect GPS position', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          ],
+                        ),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          onPressed: _isDetectingLocation ? null : () => _detectCurrentLocation(userInitiated: true),
+                          icon: _isDetectingLocation
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.my_location_rounded, size: 16),
+                          label: Text(
+                            _isDetectingLocation ? 'Locating...' : 'Use My GPS',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
                     Container(
-                      height: 250,
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade300)),
+                      height: 260,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade300),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
-                        child: FlutterMap(
-                          mapController: _mapController,
-                          options: MapOptions(
-                            initialCenter: _selectedLocation ?? _defaultLocation,
-                            initialZoom: 15.0,
-                            onTap: (tapPosition, point) {
-                              setState(() => _selectedLocation = point);
-                            },
-                          ),
+                        child: Stack(
                           children: [
-                            TileLayer(
-                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                              userAgentPackageName: 'com.ebentobox.app',
-                            ),
-                            if (_selectedLocation != null)
-                              MarkerLayer(
-                                markers: [
-                                  Marker(
-                                    point: _selectedLocation!,
-                                    width: 40,
-                                    height: 40,
-                                    child: const Icon(
-                                      Icons.location_on,
-                                      color: Colors.red,
-                                      size: 40,
-                                    ),
+                            FlutterMap(
+                              mapController: _mapController,
+                              options: MapOptions(
+                                initialCenter: _selectedLocation ?? _defaultLocation,
+                                initialZoom: 15.0,
+                                onTap: (tapPosition, point) {
+                                  setState(() => _selectedLocation = point);
+                                },
+                              ),
+                              children: [
+                                TileLayer(
+                                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                  userAgentPackageName: 'com.ebentobox.app',
+                                ),
+                                if (_selectedLocation != null)
+                                  MarkerLayer(
+                                    markers: [
+                                      Marker(
+                                        point: _selectedLocation!,
+                                        width: 50,
+                                        height: 50,
+                                        child: Column(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: BoxDecoration(
+                                                color: primaryColor,
+                                                shape: BoxShape.circle,
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withValues(alpha: 0.25),
+                                                    blurRadius: 6,
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.storefront_rounded,
+                                                color: Colors.white,
+                                                size: 20,
+                                              ),
+                                            ),
+                                            Icon(
+                                              Icons.arrow_drop_down,
+                                              color: primaryColor,
+                                              size: 16,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                              ],
+                            ),
+                            // Floating GPS Button (In-Map Target)
+                            Positioned(
+                              bottom: 12,
+                              right: 12,
+                              child: Material(
+                                color: Colors.white,
+                                elevation: 3,
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  customBorder: const CircleBorder(),
+                                  onTap: _isDetectingLocation ? null : () => _detectCurrentLocation(userInitiated: true),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(10),
+                                    child: _isDetectingLocation
+                                        ? SizedBox(
+                                            width: 22,
+                                            height: 22,
+                                            child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor),
+                                          )
+                                        : Icon(
+                                            Icons.gps_fixed_rounded,
+                                            color: primaryColor,
+                                            size: 22,
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Pinned Coordinates Badge
+                            if (_selectedLocation != null)
+                              Positioned(
+                                top: 12,
+                                left: 12,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.72),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.pin_drop_rounded, color: Colors.white, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${_selectedLocation!.latitude.toStringAsFixed(4)}, ${_selectedLocation!.longitude.toStringAsFixed(4)}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                           ],
                         ),

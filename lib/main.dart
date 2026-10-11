@@ -6,11 +6,30 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'user/user_main_screen.dart';
+import 'vendor/vendor_main_screen.dart';
 import 'auth/login_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
+
+  // Check saved session in phone storage
+  final prefs = await SharedPreferences.getInstance();
+  final String? savedUserId = prefs.getString('userId');
+  final String? savedUserRole = prefs.getString('userRole');
+
+  // Determine initial screen based on active session
+  Widget initialScreen;
+  if (savedUserId != null && savedUserId.isNotEmpty) {
+    if (savedUserRole == 'Vendor') {
+      initialScreen = const VendorMainScreen();
+    } else {
+      initialScreen = const UserMainScreen();
+    }
+  } else {
+    initialScreen = const LoginScreen();
+  }
 
   runApp(
     // MultiProvider lets us run the Cart and Notifications at the same time!
@@ -19,13 +38,14 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (context) => BentoCartProvider()),
         ChangeNotifierProvider(create: (context) => NotificationProvider()),
       ],
-      child: const MyApp(),
+      child: MyApp(initialScreen: initialScreen),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final Widget initialScreen;
+  const MyApp({super.key, required this.initialScreen});
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +56,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange),
         useMaterial3: true,
       ),
-      home: const LoginScreen(),
+      home: initialScreen,
     );
   }
 }

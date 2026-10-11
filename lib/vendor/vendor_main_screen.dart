@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'vendor_dashboard_screen.dart';
 import 'vendor_menu_screen.dart';
+import 'vendor_analytics_screen.dart';
 import 'vendor_profile_screen.dart';
 import 'vendor_settings_screen.dart';
 
@@ -17,6 +18,7 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
   final List<Widget> _screens = [
     const VendorDashboardScreen(),
     const VendorMenuScreen(),
+    const VendorAnalyticsScreen(),
     const VendorProfileScreen(),
     const VendorSettingsScreen(),
   ];
@@ -32,7 +34,7 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 20,
               offset: const Offset(0, -5),
             ),
@@ -61,6 +63,11 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
                 icon: Icon(Icons.fastfood_outlined),
                 activeIcon: Icon(Icons.fastfood),
                 label: 'Menu',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.insights_outlined),
+                activeIcon: Icon(Icons.insights_rounded),
+                label: 'Sales',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.storefront_outlined),
